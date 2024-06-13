@@ -1,0 +1,4 @@
+{
+  "python.pythonPath": "~/firedrake/bin/python",
+  "terminal.integrated.shellArgs.linux": ["-l", "-c", "source ~/firedrake/bin/activate && exec bash"]
+}
