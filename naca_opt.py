@@ -42,12 +42,6 @@ ngsolve_mesh = Mesh(ngmesh)
 mh = MeshHierarchy(ngsolve_mesh, 2)
 mesh = mh[-1]
 
-#fig = plt.figure(figsize=(11,5))
-#ax1 = fig.add_subplot(1, 1, 1)
-#triplot(mesh,axes=ax1)
-#plt.gca().legend()
-#plt.show()
-
 # %%
 class DGMassInv(PCBase):
   def initialize(self, pc):
@@ -169,6 +163,18 @@ sp = {
                  'pc_type': 'python'},
 }
 
+sp = {
+'snes_monitor': None,
+'snes_converged_reason': None,
+'snes_max_it': 20,
+'snes_atol': 1e-8,
+'snes_rtol': 1e-12,
+'snes_stol': 1e-06,
+'ksp_type': 'preonly',
+'pc_type': 'lu',
+'pc_factor_mat_solver_type': 'mumps'
+}
+
 # %%
 class Objective(ShapeObjective):
     """L2 tracking functional for Poisson problem."""
@@ -199,14 +205,12 @@ gamma = Constant(10000)
 
 # setup PDE constraint
 e = solve_navier_stokes(Q.mesh_m, Re, gamma, sp)
+e.w.subfunctions[0].rename("Velocity")
+e.w.subfunctions[1].rename("Pressure")
 
-# save state variable evolution in file u2.pvd
-#out = fd.File("solution/u2D.pvd")
-
-u = []
-
-def cb():
-  return u.append(e.w.subfunctions[0])
+out = VTKFile("output/solution.pvd")
+def cb(*args):
+    out.write(*e.w.subfunctions)
 
 # create PDEconstrained objective functional
 J_ = Objective(e, Q, cb=cb)
