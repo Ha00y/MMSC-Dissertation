@@ -25,7 +25,8 @@ x, y = naca00xx(x,t)
 pnts = [Pnt(x[i], y[i], 0) for i in range(len(x))]
 
 spline = SplineApproximation(pnts)
-aerofoil = Face(Wire(spline)).Move((0.3,0.5,0)).Rotate(Axis((0.3,0.5,0), Z), -10)
+#aerofoil = Face(Wire(spline)).Move((0.3,0.5,0)).Rotate(Axis((0.3,0.5,0), Z), -10)
+aerofoil = Face(Wire(spline)).Move((0.3,0.5,0))
 rect = WorkPlane(Axes((-1, 0, 0), n=Z, h=X)).Rectangle(4, 1).Face()
 domain = rect - aerofoil
 
@@ -209,6 +210,7 @@ e.w.subfunctions[0].rename("Velocity")
 e.w.subfunctions[1].rename("Pressure")
 
 out = VTKFile("output/solution.pvd")
+
 def cb(*args):
     out.write(*e.w.subfunctions)
 
@@ -219,6 +221,12 @@ J = ReducedObjective(J_, e)
 # add regularization to improve mesh quality
 Jq = fsz.MoYoSpectralConstraint(10, Constant(0.5), Q)
 J = J + Jq
+
+# Set up volume constraint
+vol = fsz.VolumeFunctional(Q)
+vol0 = vol.value(q, None)
+C = EqualityConstraint([vol], target_value=[vol0])
+M = ROL.StdVector(1)
 
 # ROL parameters
 params_dict = {
@@ -234,12 +242,8 @@ params_dict = {
                     'Step Tolerance': 1e-2,
                     'Constraint Tolerance': 1e-1,
                     'Iteration Limit': 10}}
+
 params = ROL.ParameterList(params_dict, "Parameters")
-problem = ROL.OptimizationProblem(J, q)
+problem = ROL.OptimizationProblem(J, q, econ=C, emul=M)
 solver = ROL.OptimizationSolver(problem, params)
 solver.solve()
-
-# %%
-
-
-
