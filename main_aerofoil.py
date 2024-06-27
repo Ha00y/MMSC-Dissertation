@@ -5,9 +5,8 @@ import numpy as np
 import ROL
 import netgen
 from netgen.occ import *
-#from PDEconstraint_pipe import NavierStokesSolver
-#from PDEconstraint_aerofoil_adapted import NavierStokesSolver
 from PDEconstraint_aerofoil import NavierStokesSolver
+#from PDEconstraint_aerofoil_alt import NavierStokesSolver
 from objective_aerofoil import AerofoilObjective
 
 # setup problem

@@ -7,27 +7,30 @@ from netgen.occ import *
 class NavierStokesSolver(PdeConstraint):
     """Incompressible Navier-Stokes as PDE constraint."""
 
-    def __init__(self, mesh_m, Re):
+    def __init__(self, mesh_m, viscosity):
         super().__init__()
         self.mesh_m = mesh_m
         self.failed_to_solve = False  # when self.solver.solve() fail
         self.gamma = fd.Constant(10000)
+        self.sigma = fd.Constant(10*(2+1)**2)
+        self.theta = 1
+        self.nu = viscosity
 
-        # Setup problem, Taylor-Hood finite elements
-        self.V = fd.VectorFunctionSpace(self.mesh_m, "CG", 4) \
-            * fd.FunctionSpace(self.mesh_m, "DG", 3)
+        # Setup problem
+        V = fd.FunctionSpace(mesh, "BDM", 2)  # Individual
+        Q = fd.FunctionSpace(mesh, "DG", 1)
+        self.W = fd.MixedFunctionSpace([V, Q])  # Mixed
 
         # Preallocate solution variables for state equation
-        self.solution = fd.Function(self.V, name="State")
-        self.testfunction = fd.TestFunction(self.V)
-
-        # Define Reynolds' number
-        self.Re = Re
+        self.solution = fd.Function(self.W, name="State")
+        self.testfunction = fd.TestFunction(self.W)
 
         n = fd.FacetNormal(self.mesh_m)
+        h = fd.CellDiameter(self.mesh_m)
         (x, y) = fd.SpatialCoordinate(self.mesh_m)
         p0 = 10/13 - x/13 #1atleft,0atright
         #f = Constant((0,-9.81))
+        g_D = fd.Constant((0,0))
     
         # Weak form of incompressible Navier-Stokes equations
         z = self.solution
@@ -36,20 +39,42 @@ class NavierStokesSolver(PdeConstraint):
         v, q = fd.split(test)
 
         # Define Lagrangian
-        L = (
-        0.5 * fd.inner(2/self.Re * fd.sym(fd.grad(u)), fd.sym(fd.grad(u)))*fd.dx
-            + fd.inner(fd.dot(u,fd.grad(u)),u)*fd.dx
-            -       fd.inner(p, fd.div(u))*fd.dx
-            +       p0 * fd.inner(n, u)*fd.ds
-            #-       fd.inner(f,self.u)*fd.dx
-            #+ 0.5 * self.gamma * fd.inner(fd.div(u), fd.div(u))*fd.dx
+        def a_h(u,v):
+            return (fd.inner(fd.grad(u), fd.grad(v)) * fd.dx
+            + (self.sigma/h('+')) * fd.inner(fd.jump(u),fd.jump(v)) * fd.dS
+            - fd.inner(fd.avg(fd.grad(u)) * n('+'), fd.jump(v)) * fd.dS
+            - fd.inner(fd.jump(u), fd.avg(fd.grad(v)) * n('+')) * fd.dS
             )
+        
+        def a_h_partial(g_D,v):
+            return ((self.sigma/h) * fd.inner(g_D,v) * fd.ds
+            - fd.inner(g_D, fd.grad(v) * n) * fd.ds
+            )
+        
+        def b_h(u,q):
+            return (- q * fd.div(u) * fd.dx
+            + fd.inner(fd.jump(u), n('+'))* fd.avg(q) * fd.dS
+            )
+        
+        def b_h_partial(g_D,q):
+            return fd.inner(g_D, n) * q * fd.ds
+        
+        def c_h(w,u,v):
+            return (fd.inner(w, fd.grad(fd.inner(u,v))) * fd.dx 
+            + 0.5 * fd.div(w) * fd.inner(u,v) * fd.dx 
+            - fd.inner(fd.avg(w), n('+')) * fd.inner(fd.jump(u), fd.avg(v)) * fd.dS
+            - 0.5 * fd.inner(fd.jump(w), n('+')) * fd.avg(fd.inner(u,v)) * fd.dS
+            + (self.theta/2) * abs(fd.inner(fd.avg(w), n('+'))) * fd.inner(fd.jump(u), fd.jump(v)) * fd.dS
+            )       
 
-        # Optimality conditions
-        self.F = fd.derivative(L, self.solution)
+        def c_partial(g_D,u,v):
+            return -0.5 * fd.inner(g_D,n) * fd.inner(u,v) * fd.ds
+
+        self.F = (self.nu * a_h(u,v)) + c_h(u,u,v) + b_h(v,p) + b_h(u,q) - (self.nu * a_h_partial(g_D,v)) - c_partial(g_D,u,v) - b_h_partial(g_D,q) 
+
 
         # Dirichlet Boundary conditions
-        self.bcs = fd.DirichletBC(self.V.sub(0), fd.Constant((0,0)), (1,4,5))
+        self.bcs = fd.DirichletBC(self.W.sub(0), g_D, (1,4,5))
 
         # PDE-solver parameters
         self.nsp = None
@@ -80,7 +105,7 @@ class NavierStokesSolver(PdeConstraint):
 if __name__ == "__main__":
 
     t = 0.12 # specify NACA00xx type
-    Re = fd.Constant(10)
+    viscosity = fd.Constant(0.1)
 
     N_x = 100
     x = np.linspace(0,1.0089,N_x)
@@ -111,7 +136,7 @@ if __name__ == "__main__":
     mh = fd.MeshHierarchy(ngsolve_mesh, 2)
     mesh = mh[-1]
 
-    e = NavierStokesSolver(mesh, Re)
+    e = NavierStokesSolver(mesh, viscosity)
     e.solve()
     out = fd.File("temp_sol/temp_u.pvd")
     out.write(e.solution.subfunctions[0])

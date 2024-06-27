@@ -1,5 +1,6 @@
 output/
 pipe_flow/solution
+temp_sol/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
