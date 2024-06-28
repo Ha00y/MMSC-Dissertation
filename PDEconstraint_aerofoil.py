@@ -27,7 +27,7 @@ class NavierStokesSolver(PdeConstraint):
         n = fd.FacetNormal(self.mesh_m)
         (x, y) = fd.SpatialCoordinate(self.mesh_m)
         p0 = 10/13 - x/13 #1atleft,0atright
-        #f = Constant((0,-9.81))
+        #f = fd.Constant((0,-9.81))
     
         # Weak form of incompressible Navier-Stokes equations
         z = self.solution
@@ -41,7 +41,7 @@ class NavierStokesSolver(PdeConstraint):
             + fd.inner(fd.dot(u,fd.grad(u)),u)*fd.dx
             -       fd.inner(p, fd.div(u))*fd.dx
             +       p0 * fd.inner(n, u)*fd.ds
-            #-       fd.inner(f,self.u)*fd.dx
+            #-       fd.inner(f,u)*fd.dx
             #+ 0.5 * self.gamma * fd.inner(fd.div(u), fd.div(u))*fd.dx
             )
 

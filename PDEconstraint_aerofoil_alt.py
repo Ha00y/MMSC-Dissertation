@@ -29,7 +29,6 @@ class NavierStokesSolver(PdeConstraint):
         h = fd.CellDiameter(self.mesh_m)
         (x, y) = fd.SpatialCoordinate(self.mesh_m)
         p0 = 10/13 - x/13 #1atleft,0atright
-        #f = Constant((0,-9.81))
         g_D = fd.Constant((0,0))
     
         # Weak form of incompressible Navier-Stokes equations
@@ -70,8 +69,11 @@ class NavierStokesSolver(PdeConstraint):
         def c_partial(g_D,u,v):
             return -0.5 * fd.inner(g_D,n) * fd.inner(u,v) * fd.ds
 
-        self.F = (self.nu * a_h(u,v)) + c_h(u,u,v) + b_h(v,p) + b_h(u,q) - (self.nu * a_h_partial(g_D,v)) - c_partial(g_D,u,v) - b_h_partial(g_D,q) 
-
+        self.F = (
+                (self.nu * a_h(u,v)) + c_h(u,u,v) + b_h(v,p) + b_h(u,q)
+                - (self.nu * a_h_partial(g_D,v)) - c_partial(g_D,u,v) - b_h_partial(g_D,q) 
+                + (self.nu * p0 * fd.inner(n,v) * fd.ds)
+                )   
 
         # Dirichlet Boundary conditions
         self.bcs = fd.DirichletBC(self.W.sub(0), g_D, (1,4,5))
