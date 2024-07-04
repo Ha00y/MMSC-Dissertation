@@ -1,4 +1,4 @@
-import firedrake as fd
+from firedrake import *
 from fireshape import PdeConstraint
 import numpy as np
 import netgen
@@ -11,72 +11,72 @@ class NavierStokesSolver(PdeConstraint):
         super().__init__()
         self.mesh_m = mesh_m
         self.failed_to_solve = False  # when self.solver.solve() fail
-        self.gamma = fd.Constant(10000)
-        self.sigma = fd.Constant(10*(2+1)**2)
+        self.gamma = Constant(10000)
+        self.sigma = Constant(10*(2+1)**2)
         self.theta = 1
         self.nu = viscosity
 
         # Setup problem
-        V = fd.FunctionSpace(mesh, "BDM", 2)  # Individual
-        Q = fd.FunctionSpace(mesh, "DG", 1)
-        self.W = fd.MixedFunctionSpace([V, Q])  # Mixed
+        V = FunctionSpace(mesh, "BDM", 2)  # Individual
+        Q = FunctionSpace(mesh, "DG", 1)
+        self.W = MixedFunctionSpace([V, Q])  # Mixed
 
         # Preallocate solution variables for state equation
-        self.solution = fd.Function(self.W, name="State")
-        self.testfunction = fd.TestFunction(self.W)
+        self.solution = Function(self.W, name="State")
+        self.testfunction = TestFunction(self.W)
 
-        n = fd.FacetNormal(self.mesh_m)
-        h = fd.CellDiameter(self.mesh_m)
-        (x, y) = fd.SpatialCoordinate(self.mesh_m)
+        n = FacetNormal(self.mesh_m)
+        h = CellDiameter(self.mesh_m)
+        (x, y) = SpatialCoordinate(self.mesh_m)
         p0 = 10/13 - x/13 #1atleft,0atright
-        g_D = fd.Constant((0,0))
-    
+        g_D = Constant((0,0))
+
         # Weak form of incompressible Navier-Stokes equations
         z = self.solution
-        u, p = fd.split(z)
+        u, p = split(z)
         test = self.testfunction
-        v, q = fd.split(test)
+        v, q = split(test)
 
         # Define Lagrangian
-        def a_h(u,v):
-            return (fd.inner(fd.grad(u), fd.grad(v)) * fd.dx
-            + (self.sigma/h('+')) * fd.inner(fd.jump(u),fd.jump(v)) * fd.dS
-            - fd.inner(fd.avg(fd.grad(u)) * n('+'), fd.jump(v)) * fd.dS
-            - fd.inner(fd.jump(u), fd.avg(fd.grad(v)) * n('+')) * fd.dS
-            )
-        
-        def a_h_partial(g_D,v):
-            return ((self.sigma/h) * fd.inner(g_D,v) * fd.ds
-            - fd.inner(g_D, fd.grad(v) * n) * fd.ds
-            )
-        
-        def b_h(u,q):
-            return (- q * fd.div(u) * fd.dx
-            + fd.inner(fd.jump(u), n('+'))* fd.avg(q) * fd.dS
-            )
-        
-        def b_h_partial(g_D,q):
-            return fd.inner(g_D, n) * q * fd.ds
-        
-        def c_h(w,u,v):
-            return (fd.inner(w, fd.grad(fd.inner(u,v))) * fd.dx 
-            + 0.5 * fd.div(w) * fd.inner(u,v) * fd.dx 
-            - fd.inner(fd.avg(w), n('+')) * fd.inner(fd.jump(u), fd.avg(v)) * fd.dS
-            - 0.5 * fd.inner(fd.jump(w), n('+')) * fd.avg(fd.inner(u,v)) * fd.dS
-            + (self.theta/2) * abs(fd.inner(fd.avg(w), n('+'))) * fd.inner(fd.jump(u), fd.jump(v)) * fd.dS
-            )       
+        def a(u, v):
+            return inner(2*sym(grad(u)), grad(v))*dx \
+                 - inner(avg(2*sym(grad(u))), 2*avg(outer(v, n))) * dS \
+                 - inner(avg(2*sym(grad(v))), 2*avg(outer(u, n))) * dS \
+                 + sigma/avg(h) * inner(2*avg(outer(u,n)),2*avg(outer(v,n))) * dS
 
-        def c_partial(g_D,u,v):
-            return -0.5 * fd.inner(g_D,n) * fd.inner(u,v) * fd.ds
+        def a_bc(u, v, bid, g):
+            return -inner(outer(v,n),2*sym(grad(u)))*ds(bid) \
+                   -inner(outer(u-g,n),2*sym(grad(v)))*ds(bid) \
+                   +(sigma/h)*inner(v,u-g)*ds(bid)
+
+        def c(u, v):
+            uflux_int = 0.5*(dot(u, n) + abs(dot(u, n)))*u
+            return - dot(u ,div(outer(v,u)))*dx \
+                   + dot(v('+')-v('-'), uflux_int('+')-uflux_int('-'))*dS
+
+        def c_bc(u, v, bid, g):
+            if g is None:
+                uflux_ext = 0.5*(inner(u,n)+abs(inner(u,n)))*u
+            else:
+                uflux_ext = 0.5*(inner(u,n)+abs(inner(u,n)))*u + 0.5*(inner(u,n)-abs(inner(u,n)))*g
+            return dot(v,uflux_ext)*ds(bid)
+
+        def b(u, q):
+            return div(u) * q * dx
 
         self.F = (
-                (self.nu * a_h(u,v)) + c_h(u,u,v) + b_h(v,p) + b_h(u,q)
-                - (self.nu * a_h_partial(g_D,v)) - c_partial(g_D,u,v) - b_h_partial(g_D,q) 
-                + (self.nu * p0 * fd.inner(n,v) * fd.ds)
-                )   
+                   self.nu * a(u,v)
+                 + c(u,v)
+                 + b(v,p)
+                 + b(u,q)
+                 + self.nu * p0 * inner(n,v) * ds
+                 )
 
         # Dirichlet Boundary conditions
-        self.bcs = fd.DirichletBC(self.W.sub(0), g_D, (1,4,5))
+        dirichlet_bids = (1, 4, 5)
+        self.bcs = DirichletBC(self.W.sub(0), g_D, dirichlet_bids)
+        for bid in dirichlet_bids:
+            self.F += self.nu * a_bc(u, v, bid, g_D) + c_bc(u, v, bid, g_D)
 
         # PDE-solver parameters
         self.nsp = None
@@ -97,9 +97,9 @@ class NavierStokesSolver(PdeConstraint):
         self.failed_to_solve = False
         u_old = self.solution.copy(deepcopy=True)
         try:
-            fd.solve(self.F == 0, self.solution, bcs=self.bcs,
+            solve(self.F == 0, self.solution, bcs=self.bcs,
                      solver_parameters=self.sp)
-        except fd.ConvergenceError:
+        except ConvergenceError:
             self.failed_to_solve = True
             self.solution.assign(u_old)
 
@@ -107,7 +107,7 @@ class NavierStokesSolver(PdeConstraint):
 if __name__ == "__main__":
 
     t = 0.12 # specify NACA00xx type
-    viscosity = fd.Constant(0.1)
+    viscosity = Constant(0.1)
 
     N_x = 100
     x = np.linspace(0,1.0089,N_x)
@@ -133,12 +133,12 @@ if __name__ == "__main__":
     geo = OCCGeometry(domain, dim=2)
 
     ngmesh = geo.GenerateMesh(maxh=1)
-    ngsolve_mesh = fd.Mesh(ngmesh)
+    ngsolve_mesh = Mesh(ngmesh)
 
-    mh = fd.MeshHierarchy(ngsolve_mesh, 2)
+    mh = MeshHierarchy(ngsolve_mesh, 2)
     mesh = mh[-1]
 
     e = NavierStokesSolver(mesh, viscosity)
     e.solve()
-    out = fd.File("temp_sol/temp_u.pvd")
+    out = File("temp_sol/temp_u.pvd")
     out.write(e.solution.subfunctions[0])
