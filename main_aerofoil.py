@@ -5,14 +5,15 @@ import numpy as np
 import ROL
 import netgen
 from netgen.occ import *
-#from PDEconstraint_aerofoil import NavierStokesSolver
-from PDEconstraint_aerofoil_alt import NavierStokesSolver
+#from PDEconstraint_aerofoil_CG import NavierStokesSolver
+from PDEconstraint_aerofoil_DG import NavierStokesSolver
 from objective_aerofoil import AerofoilObjective
+from cauchy_riemann import CauchyRiemannConstraint
 
 # setup problem
 t = 0.12 # specify NACA00xx type
 
-N_x = 100
+N_x = 1000
 x = np.linspace(0,1.0089,N_x) 
 
 def naca00xx(x,t):
@@ -49,17 +50,11 @@ inner = fs.LaplaceInnerProduct(Q, fixed_bids=[1, 2, 3, 4])
 q = fs.ControlVector(Q, inner)
 
 # setup PDE constraint
-if mesh.topological_dimension() == 2:  # in 2D
-    viscosity = fd.Constant(0.1)
-    Re = fd.Constant(10)
-elif mesh.topological_dimension() == 3:  # in 3D
-    viscosity = fd.Constant(1/10.)  # simpler problem in 3D
-    Re = fd.Constant(10)
-else:
-    raise NotImplementedError
+viscosity = fd.Constant(0.1)
+Re = fd.Constant(10)
 
-#e = NavierStokesSolver(Q.mesh_m, viscosity)
-e = NavierStokesSolver(Q.mesh_m, Re)
+e = NavierStokesSolver(Q.mesh_m, viscosity)
+#e = NavierStokesSolver(Q.mesh_m, Re)
 e.solution.subfunctions[0].rename("Velocity")
 e.solution.subfunctions[1].rename("Pressure")
 
@@ -77,10 +72,12 @@ J_ = AerofoilObjective(e, Q, cb=cb)
 J = fs.ReducedObjective(J_, e)
 
 # add regularization to improve mesh quality
-Jq = fsz.MoYoSpectralConstraint(10, fd.Constant(0.5), Q)
-J = J + Jq
+J_q = fsz.MoYoSpectralConstraint(10, fd.Constant(0.5), Q)
+J_cr = CauchyRiemannConstraint(e, Q, cb=cb)
 
-# Set up volume constraint
+J = J + J_q + J_cr
+
+# Set up constraints
 vol = fsz.VolumeFunctional(Q)
 initial_vol = vol.value(q, None)
 econ = fs.EqualityConstraint([vol], target_value=[initial_vol])
@@ -96,7 +93,7 @@ params_dict = {
              {'Subproblem Step Type': 'Trust Region',
               'Print Intermediate Optimization History': False,
               'Subproblem Iteration Limit': 10}},
-    'Status Test': {'Gradient Tolerance': 1e-2,
+    'Status Test': {'Gradient Tolerance': 1e-4,
                     'Step Tolerance': 1e-2,
                     'Constraint Tolerance': 1e-1,
                     'Iteration Limit': 10}}

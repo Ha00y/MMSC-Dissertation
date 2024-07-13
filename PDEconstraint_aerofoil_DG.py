@@ -17,9 +17,9 @@ class NavierStokesSolver(PdeConstraint):
         self.nu = viscosity
 
         # Setup problem
-        V = FunctionSpace(mesh, "BDM", 2)  # Individual
-        Q = FunctionSpace(mesh, "DG", 1)
-        self.W = MixedFunctionSpace([V, Q])  # Mixed
+        self.V = FunctionSpace(self.mesh_m, "BDM", 2)  # Individual
+        self.Q = FunctionSpace(self.mesh_m, "DG", 1)
+        self.W = MixedFunctionSpace([self.V, self.Q])  # Mixed
 
         # Preallocate solution variables for state equation
         self.solution = Function(self.W, name="State")
@@ -42,12 +42,12 @@ class NavierStokesSolver(PdeConstraint):
             return inner(2*sym(grad(u)), grad(v))*dx \
                  - inner(avg(2*sym(grad(u))), 2*avg(outer(v, n))) * dS \
                  - inner(avg(2*sym(grad(v))), 2*avg(outer(u, n))) * dS \
-                 + sigma/avg(h) * inner(2*avg(outer(u,n)),2*avg(outer(v,n))) * dS
+                 + self.sigma/avg(h) * inner(2*avg(outer(u,n)),2*avg(outer(v,n))) * dS
 
         def a_bc(u, v, bid, g):
             return -inner(outer(v,n),2*sym(grad(u)))*ds(bid) \
                    -inner(outer(u-g,n),2*sym(grad(v)))*ds(bid) \
-                   +(sigma/h)*inner(v,u-g)*ds(bid)
+                   +(self.sigma/h)*inner(v,u-g)*ds(bid)
 
         def c(u, v):
             uflux_int = 0.5*(dot(u, n) + abs(dot(u, n)))*u
@@ -109,7 +109,7 @@ if __name__ == "__main__":
     t = 0.12 # specify NACA00xx type
     viscosity = Constant(0.1)
 
-    N_x = 100
+    N_x = 1000
     x = np.linspace(0,1.0089,N_x)
 
     def naca00xx(x,t):

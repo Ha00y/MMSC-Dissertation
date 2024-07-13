@@ -3,8 +3,8 @@ from fireshape import ShapeObjective
 import numpy as np
 
 
-class AerofoilObjective(ShapeObjective):
-    """L2 tracking functional for Poisson problem."""
+class CauchyRiemannConstraint(ShapeObjective):
+    """Weakly enforce the Cauchy-Riemann equations"""
 
     def __init__(self, pde_solver, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -12,11 +12,10 @@ class AerofoilObjective(ShapeObjective):
 
     def value_form(self):
         """Evaluate misfit functional."""
-        #nu = self.pde_solver.nu
-        #Re = self.pde_solver.Re
 
         if self.pde_solver.failed_to_solve:  # return NaNs if state solve fails
             return np.nan * fd.dx(self.pde_solver.mesh_m)
         else:
             u, _ = fd.split(self.pde_solver.solution)
-            return fd.inner(fd.grad(u), fd.grad(u)) * fd.dx
+            B = fd.as_matrix([[-fd.Dx(u[0], 0), fd.Dx(u[1], 1)], [fd.Dx(u[1], 0), fd.Dx(u[0], 1)]])
+            return fd.inner(fd.dot(B, u), fd.dot(B, u)) * fd.dx

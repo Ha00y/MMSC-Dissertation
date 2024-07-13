@@ -82,7 +82,7 @@ if __name__ == "__main__":
     t = 0.12 # specify NACA00xx type
     Re = fd.Constant(10)
 
-    N_x = 100
+    N_x = 1000
     x = np.linspace(0,1.0089,N_x)
 
     def naca00xx(x,t):
