@@ -12,7 +12,6 @@ class AerofoilObjective(ShapeObjective):
 
     def value_form(self):
         """Evaluate misfit functional."""
-        #nu = self.pde_solver.nu
         #Re = self.pde_solver.Re
 
         if self.pde_solver.failed_to_solve:  # return NaNs if state solve fails

@@ -17,5 +17,5 @@ class CauchyRiemannConstraint(ShapeObjective):
             return np.nan * fd.dx(self.pde_solver.mesh_m)
         else:
             u, _ = fd.split(self.pde_solver.solution)
-            B = fd.as_matrix([[-fd.Dx(u[0], 0), fd.Dx(u[1], 1)], [fd.Dx(u[1], 0), fd.Dx(u[0], 1)]])
-            return fd.inner(fd.dot(B, u), fd.dot(B, u)) * fd.dx
+            Bu = fd.as_vector([fd.Dx(u[0], 0) - fd.Dx(u[1], 1), fd.Dx(u[1], 0) + fd.Dx(u[0], 1)])
+            return fd.inner(Bu, Bu) * fd.dx

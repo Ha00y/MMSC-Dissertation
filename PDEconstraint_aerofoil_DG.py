@@ -4,17 +4,17 @@ import numpy as np
 import netgen
 from netgen.occ import *
 
-class NavierStokesSolver(PdeConstraint):
+class NavierStokesSolverDG(PdeConstraint):
     """Incompressible Navier-Stokes as PDE constraint."""
 
-    def __init__(self, mesh_m, viscosity):
+    def __init__(self, mesh_m, Re):
         super().__init__()
         self.mesh_m = mesh_m
         self.failed_to_solve = False  # when self.solver.solve() fail
         self.gamma = Constant(10000)
         self.sigma = Constant(10*(2+1)**2)
         self.theta = 1
-        self.nu = viscosity
+        self.Re = Re
 
         # Setup problem
         self.V = FunctionSpace(self.mesh_m, "BDM", 2)  # Individual
@@ -65,18 +65,18 @@ class NavierStokesSolver(PdeConstraint):
             return div(u) * q * dx
 
         self.F = (
-                   self.nu * a(u,v)
+                   (1/self.Re) * a(u,v)
                  + c(u,v)
                  + b(v,p)
                  + b(u,q)
-                 + self.nu * p0 * inner(n,v) * ds
+                 + (1/self.Re) * p0 * inner(n,v) * ds
                  )
 
         # Dirichlet Boundary conditions
         dirichlet_bids = (1, 4, 5)
         self.bcs = DirichletBC(self.W.sub(0), g_D, dirichlet_bids)
         for bid in dirichlet_bids:
-            self.F += self.nu * a_bc(u, v, bid, g_D) + c_bc(u, v, bid, g_D)
+            self.F += (1/self.Re) * a_bc(u, v, bid, g_D) + c_bc(u, v, bid, g_D)
 
         # PDE-solver parameters
         self.nsp = None

@@ -4,7 +4,7 @@ import numpy as np
 import netgen
 from netgen.occ import *
 
-class NavierStokesSolver(PdeConstraint):
+class NavierStokesSolverCG(PdeConstraint):
     """Incompressible Navier-Stokes as PDE constraint."""
 
     def __init__(self, mesh_m, Re):
