@@ -5,8 +5,12 @@ import numpy as np
 import ROL
 import netgen
 from netgen.occ import *
-#from PDEconstraint_aerofoil_CG import NavierStokesSolver
-from PDEconstraint_aerofoil_DG import NavierStokesSolver
+
+from PDEconstraint_aerofoil_CG import NavierStokesSolverCG
+from PDEconstraint_aerofoil_DG import NavierStokesSolverDG
+
+from CR_Hdot_inner_product import CRHdotInnerProduct
+
 from objective_aerofoil import AerofoilObjective
 from cauchy_riemann import CauchyRiemannConstraint
 
@@ -45,16 +49,15 @@ mesh = mh[-1]
 
 #mesh = fd.Mesh("pipe.msh")
 Q = fs.FeControlSpace(mesh)
-#inner = fs.LaplaceInnerProduct(Q, fixed_bids=[10, 11, 12])
 inner = fs.LaplaceInnerProduct(Q, fixed_bids=[1, 2, 3, 4])
+inner = CRHdotInnerProduct(Q, fixed_bids=[1, 2, 3, 4])
 q = fs.ControlVector(Q, inner)
 
 # setup PDE constraint
-viscosity = fd.Constant(0.1)
-Re = fd.Constant(10)
+Re = fd.Constant(100)
 
-e = NavierStokesSolver(Q.mesh_m, viscosity)
-#e = NavierStokesSolver(Q.mesh_m, Re)
+e = NavierStokesSolverDG(Q.mesh_m, Re)
+#e = NavierStokesSolverCG(Q.mesh_m, Re)
 e.solution.subfunctions[0].rename("Velocity")
 e.solution.subfunctions[1].rename("Pressure")
 
