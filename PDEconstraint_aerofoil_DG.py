@@ -4,14 +4,16 @@ import numpy as np
 import netgen
 from netgen.occ import *
 
+from DG_mass_inv import DGMassInv
+
 class NavierStokesSolverDG(PdeConstraint):
     """Incompressible Navier-Stokes as PDE constraint."""
 
-    def __init__(self, mesh_m, Re):
+    def __init__(self, mesh_m, Re, gamma):
         super().__init__()
         self.mesh_m = mesh_m
         self.failed_to_solve = False  # when self.solver.solve() fail
-        self.gamma = Constant(10000)
+        self.gamma = gamma
         self.sigma = Constant(10*(2+1)**2)
         self.theta = 1
         self.Re = Re
@@ -63,6 +65,9 @@ class NavierStokesSolverDG(PdeConstraint):
 
         def b(u, q):
             return div(u) * q * dx
+        
+        L_lagrangian = 0.5 * self.gamma * inner(div(u), div(u)) * dx
+        F_lagrangian = derivative(L_lagrangian, z)
 
         self.F = (
                    (1/self.Re) * a(u,v)
@@ -70,6 +75,7 @@ class NavierStokesSolverDG(PdeConstraint):
                  + b(v,p)
                  + b(u,q)
                  + (1/self.Re) * p0 * inner(n,v) * ds
+                 + F_lagrangian
                  )
 
         # Dirichlet Boundary conditions
@@ -80,16 +86,56 @@ class NavierStokesSolverDG(PdeConstraint):
 
         # PDE-solver parameters
         self.nsp = None
+        #self.sp = {
+        #            'snes_monitor': None,
+        #            'snes_converged_reason': None,
+        #            'snes_max_it': 20,
+        #            'snes_atol': 1e-8,
+        #            'snes_rtol': 1e-12,
+        #            'snes_stol': 1e-06,
+        #            'ksp_type': 'preonly',
+        #            'pc_type': 'lu',
+        #            'pc_factor_mat_solver_type': 'mumps'
+        #            }
         self.sp = {
+                    'mat_type': 'nest',
                     'snes_monitor': None,
                     'snes_converged_reason': None,
                     'snes_max_it': 20,
                     'snes_atol': 1e-8,
                     'snes_rtol': 1e-12,
                     'snes_stol': 1e-06,
-                    'ksp_type': 'preonly',
-                    'pc_type': 'lu',
-                    'pc_factor_mat_solver_type': 'mumps'
+                    'ksp_type': 'fgmres',
+                    'ksp_converged_reason': None,
+                    'ksp_monitor_true_residual': None,
+                    'ksp_max_it': 50,
+                    'ksp_atol': 1e-08,
+                    'ksp_rtol': 1e-10,
+                    'pc_type': 'fieldsplit',
+                    'pc_fieldsplit_type': 'schur',
+                    'pc_fieldsplit_schur_factorization_type': 'upper',
+
+                    'fieldsplit_0': {'ksp_convergence_test': 'skip',
+                                    'ksp_max_it': 1,
+                                    'ksp_norm_type': 'unpreconditioned',
+                                    'ksp_richardson_self_scale': False,
+                                    'ksp_type': 'richardson',
+                                    'pc_type': 'mg',
+                                        'pc_mg_type': 'full',
+                                        'mg_coarse_assembled_pc_type': 'lu',
+                                        'mg_coarse_assembled_pc_factor_mat_solver_type': 'mumps',
+                                        'mg_coarse_pc_python_type': 'firedrake.AssembledPC',
+                                        'mg_coarse_pc_type': 'python',
+                                        'mg_levels': {'ksp_convergence_test': 'skip',
+                                                    'ksp_max_it': 5,
+                                                    'ksp_type': 'fgmres',
+                                                    'pc_python_type': 'firedrake.ASMStarPC',
+                                                    'pc_type': 'python'},
+                                                    },
+
+                    'fieldsplit_1': {'ksp_type': 'preonly',
+                                    'pc_python_type': __name__ + '.DGMassInv',
+                                    'pc_type': 'python'},
                     }
 
     def solve(self):
@@ -107,7 +153,8 @@ class NavierStokesSolverDG(PdeConstraint):
 if __name__ == "__main__":
 
     t = 0.12 # specify NACA00xx type
-    viscosity = Constant(0.1)
+    Re = Constant(1)
+    gamma = Constant(10000)
 
     N_x = 1000
     x = np.linspace(0,1.0089,N_x)
@@ -117,10 +164,9 @@ if __name__ == "__main__":
         return np.concatenate((x,np.flip(x)),axis=None), np.concatenate((y,np.flip(-y)),axis=None)
 
     x, y = naca00xx(x,t)
-
     pnts = [Pnt(x[i], y[i], 0) for i in range(len(x))]
-
     spline = SplineApproximation(pnts)
+
     aerofoil = Face(Wire(spline)).Move((0.3,1,0))
     rect = WorkPlane(Axes((-1, 0, 0), n=Z, h=X)).Rectangle(4, 2).Face()
     domain = rect - aerofoil
@@ -138,7 +184,7 @@ if __name__ == "__main__":
     mh = MeshHierarchy(ngsolve_mesh, 2)
     mesh = mh[-1]
 
-    e = NavierStokesSolver(mesh, viscosity)
+    e = NavierStokesSolverDG(mesh, Re, gamma)
     e.solve()
     out = File("temp_sol/temp_u.pvd")
     out.write(e.solution.subfunctions[0])

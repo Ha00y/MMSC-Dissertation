@@ -47,17 +47,17 @@ ngsolve_mesh = fd.Mesh(ngmesh)
 mh = fd.MeshHierarchy(ngsolve_mesh, 2)
 mesh = mh[-1]
 
-#mesh = fd.Mesh("pipe.msh")
 Q = fs.FeControlSpace(mesh)
-inner = fs.LaplaceInnerProduct(Q, fixed_bids=[1, 2, 3, 4])
+#inner = fs.LaplaceInnerProduct(Q, fixed_bids=[1, 2, 3, 4])
 inner = CRHdotInnerProduct(Q, fixed_bids=[1, 2, 3, 4])
 q = fs.ControlVector(Q, inner)
 
 # setup PDE constraint
-Re = fd.Constant(100)
+Re = fd.Constant(1) # CHANGE these in DGMassInv too
+gamma = fd.Constant(10000) # CHANGE these in DGMassInv too
 
-e = NavierStokesSolverDG(Q.mesh_m, Re)
-#e = NavierStokesSolverCG(Q.mesh_m, Re)
+e = NavierStokesSolverDG(Q.mesh_m, Re, gamma)
+#e = NavierStokesSolverCG(Q.mesh_m, Re, gamma)
 e.solution.subfunctions[0].rename("Velocity")
 e.solution.subfunctions[1].rename("Pressure")
 
@@ -97,7 +97,7 @@ params_dict = {
               'Print Intermediate Optimization History': False,
               'Subproblem Iteration Limit': 10}},
     'Status Test': {'Gradient Tolerance': 1e-4,
-                    'Step Tolerance': 1e-2,
+                    'Step Tolerance': 1e-4,
                     'Constraint Tolerance': 1e-1,
                     'Iteration Limit': 10}}
 
