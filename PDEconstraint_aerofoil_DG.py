@@ -1,10 +1,8 @@
 from firedrake import *
 from fireshape import PdeConstraint
-import numpy as np
-import netgen
-from netgen.occ import *
 
 from DG_mass_inv import DGMassInv
+from mesh_gen.naca_gen import NACAgen
 
 class NavierStokesSolverDG(PdeConstraint):
     """Incompressible Navier-Stokes as PDE constraint."""
@@ -97,6 +95,7 @@ class NavierStokesSolverDG(PdeConstraint):
         #            'pc_type': 'lu',
         #            'pc_factor_mat_solver_type': 'mumps'
         #            }
+
         self.sp = {
                     'mat_type': 'nest',
                     'snes_monitor': None,
@@ -108,7 +107,7 @@ class NavierStokesSolverDG(PdeConstraint):
                     'ksp_type': 'fgmres',
                     'ksp_converged_reason': None,
                     'ksp_monitor_true_residual': None,
-                    'ksp_max_it': 50,
+                    'ksp_max_it': 500,
                     'ksp_atol': 1e-08,
                     'ksp_rtol': 1e-10,
                     'pc_type': 'fieldsplit',
@@ -152,37 +151,15 @@ class NavierStokesSolverDG(PdeConstraint):
 
 if __name__ == "__main__":
 
-    t = 0.12 # specify NACA00xx type
     Re = Constant(1)
     gamma = Constant(10000)
+    profile = '0012' # specify NACA type
+    
+    mesh = NACAgen(profile)
 
-    N_x = 1000
-    x = np.linspace(0,1.0089,N_x)
-
-    def naca00xx(x,t):
-        y = 5*t*(0.2969*(x**0.5) - 0.1260*x - 0.3516*(x**2) + 0.2843*(x**3) - 0.1015*(x**4))
-        return np.concatenate((x,np.flip(x)),axis=None), np.concatenate((y,np.flip(-y)),axis=None)
-
-    x, y = naca00xx(x,t)
-    pnts = [Pnt(x[i], y[i], 0) for i in range(len(x))]
-    spline = SplineApproximation(pnts)
-
-    aerofoil = Face(Wire(spline)).Move((0.3,1,0))
-    rect = WorkPlane(Axes((-1, 0, 0), n=Z, h=X)).Rectangle(4, 2).Face()
-    domain = rect - aerofoil
-
-    domain.edges.name="wing"
-    domain.edges.Min(Y).name="bottom"
-    domain.edges.Max(Y).name="top"
-    domain.edges.Min(X).name="inlet"
-    domain.edges.Max(X).name="outlet"
-    geo = OCCGeometry(domain, dim=2)
-
-    ngmesh = geo.GenerateMesh(maxh=1)
-    ngsolve_mesh = Mesh(ngmesh)
-
-    mh = MeshHierarchy(ngsolve_mesh, 2)
-    mesh = mh[-1]
+    # Load the mesh
+    #with CheckpointFile('naca0012_mesh.h5', 'r') as afile:
+    #    mesh = afile.load_mesh('naca0012')
 
     e = NavierStokesSolverDG(mesh, Re, gamma)
     e.solve()

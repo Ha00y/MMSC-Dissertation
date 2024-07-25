@@ -1,51 +1,20 @@
 import firedrake as fd
 import fireshape as fs
 import fireshape.zoo as fsz
-import numpy as np
 import ROL
-import netgen
-from netgen.occ import *
 
 from PDEconstraint_aerofoil_CG import NavierStokesSolverCG
 from PDEconstraint_aerofoil_DG import NavierStokesSolverDG
 
 from CR_Hdot_inner_product import CRHdotInnerProduct
-
 from objective_aerofoil import AerofoilObjective
 from cauchy_riemann import CauchyRiemannConstraint
 
+from mesh_gen.naca_gen import NACAgen
+
 # setup problem
-t = 0.12 # specify NACA00xx type
-
-N_x = 1000
-x = np.linspace(0,1.0089,N_x) 
-
-def naca00xx(x,t):
-  y = 5*t*(0.2969*(x**0.5) - 0.1260*x - 0.3516*(x**2) + 0.2843*(x**3) - 0.1015*(x**4))
-  return np.concatenate((x,np.flip(x)),axis=None), np.concatenate((y,np.flip(-y)),axis=None)
-
-x, y = naca00xx(x,t)
-
-pnts = [Pnt(x[i], y[i], 0) for i in range(len(x))]
-
-spline = SplineApproximation(pnts)
-#aerofoil = Face(Wire(spline)).Move((0.3,1,0)).Rotate(Axis((0.3,1,0), Z), -10)
-aerofoil = Face(Wire(spline)).Move((0.3,1,0))
-rect = WorkPlane(Axes((-1, 0, 0), n=Z, h=X)).Rectangle(4, 2).Face()
-domain = rect - aerofoil
-
-domain.edges.name="wing"
-domain.edges.Min(Y).name="bottom"
-domain.edges.Max(Y).name="top"
-domain.edges.Min(X).name="inlet"
-domain.edges.Max(X).name="outlet"
-geo = OCCGeometry(domain, dim=2)
-
-ngmesh = geo.GenerateMesh(maxh=1)
-ngsolve_mesh = fd.Mesh(ngmesh)
-
-mh = fd.MeshHierarchy(ngsolve_mesh, 2)
-mesh = mh[-1]
+profile = '0012' # specify NACA type
+mesh = NACAgen(profile)
 
 Q = fs.FeControlSpace(mesh)
 #inner = fs.LaplaceInnerProduct(Q, fixed_bids=[1, 2, 3, 4])

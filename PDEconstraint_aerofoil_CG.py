@@ -1,10 +1,8 @@
 import firedrake as fd
 from fireshape import PdeConstraint
-import numpy as np
-import netgen
-from netgen.occ import *
 
 from DG_mass_inv import DGMassInv
+from mesh_gen.naca_gen import NACAgen
 
 class NavierStokesSolverCG(PdeConstraint):
     """Incompressible Navier-Stokes as PDE constraint."""
@@ -122,38 +120,11 @@ class NavierStokesSolverCG(PdeConstraint):
 
 if __name__ == "__main__":
 
-    t = 0.12 # specify NACA00xx type
     Re = fd.Constant(1)
     gamma = fd.Constant(10000)
-
-    N_x = 1000
-    x = np.linspace(0,1.0089,N_x)
-
-    def naca00xx(x,t):
-        y = 5*t*(0.2969*(x**0.5) - 0.1260*x - 0.3516*(x**2) + 0.2843*(x**3) - 0.1015*(x**4))
-        return np.concatenate((x,np.flip(x)),axis=None), np.concatenate((y,np.flip(-y)),axis=None)
-
-    x, y = naca00xx(x,t)
-
-    pnts = [Pnt(x[i], y[i], 0) for i in range(len(x))]
-
-    spline = SplineApproximation(pnts)
-    aerofoil = Face(Wire(spline)).Move((0.3,1,0))
-    rect = WorkPlane(Axes((-1, 0, 0), n=Z, h=X)).Rectangle(4, 2).Face()
-    domain = rect - aerofoil
-
-    domain.edges.name="wing"
-    domain.edges.Min(Y).name="bottom"
-    domain.edges.Max(Y).name="top"
-    domain.edges.Min(X).name="inlet"
-    domain.edges.Max(X).name="outlet"
-    geo = OCCGeometry(domain, dim=2)
-
-    ngmesh = geo.GenerateMesh(maxh=1)
-    ngsolve_mesh = fd.Mesh(ngmesh)
-
-    mh = fd.MeshHierarchy(ngsolve_mesh, 2)
-    mesh = mh[-1]
+    profile = '0012' # specify NACA type
+   
+    mesh = NACAgen(profile)
 
     e = NavierStokesSolverCG(mesh, Re, gamma)
     e.solve()

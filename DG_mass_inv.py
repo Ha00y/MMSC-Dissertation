@@ -4,8 +4,8 @@ class DGMassInv(PCBase):
 
     def initialize(self, pc):
 
-        self.gamma = Constant(10000)
         self.Re = Constant(1)
+        self.gamma = Constant(10000)
 
         _, P = pc.getOperators()
         appctx = self.get_appctx(pc)

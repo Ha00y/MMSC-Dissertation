@@ -1,8 +1,9 @@
 output/
-pipe_flow/solution
 temp_sol/
 outputH(sym)/
 outputH1/
+mesh_gen/__pycache__
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
