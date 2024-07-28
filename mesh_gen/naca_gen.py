@@ -28,11 +28,10 @@ def NACAgen(profile):
     geo = OCCGeometry(domain, dim=2)
 
     ngmesh = geo.GenerateMesh(maxh=1)
-    ngsolve_mesh = fd.Mesh(ngmesh)
-
-    mh = fd.MeshHierarchy(ngsolve_mesh, 2)
-    mesh = mh[-1]
+    mesh = fd.Mesh(ngmesh)
     mesh.name = 'naca0012'
+    #mh = fd.MeshHierarchy(mesh, 2)
+    #mesh = mh[-1]
 
     return mesh
 
@@ -110,7 +109,7 @@ if __name__ == "__main__":
     mesh = NACAgen('0012')
 
     # Save the mesh
-    with fd.CheckpointFile('naca0012_mesh.h5', 'w') as afile:
+    with fd.CheckpointFile('mesh_gen/naca0012_mesh.h5', 'w') as afile:
         afile.save_mesh(mesh)
 
     # Load the mesh

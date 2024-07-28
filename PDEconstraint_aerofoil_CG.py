@@ -1,17 +1,22 @@
 import firedrake as fd
 from fireshape import PdeConstraint
+import numpy as np
 
 from DG_mass_inv import DGMassInv
-from mesh_gen.naca_gen import NACAgen
 
 class NavierStokesSolverCG(PdeConstraint):
     """Incompressible Navier-Stokes as PDE constraint."""
 
-    def __init__(self, mesh_m, Re, gamma):
+    def __init__(self, mesh, Re, Fr, gamma):
         super().__init__()
-        self.mesh_m = mesh_m
         self.failed_to_solve = False  # when self.solver.solve() fail
-        self.gamma = gamma
+        self.mesh_m = mesh
+        self.gamma = fd.Constant(gamma)
+        self.Re = fd.Constant(Re)
+        self.Fr = fd.Constant(Fr)
+
+        mh = fd.MeshHierarchy(mesh, 2)
+        self.mesh_m = mh[-1]
 
         # Setup problem, Taylor-Hood finite elements
         self.V = fd.VectorFunctionSpace(self.mesh_m, "CG", 4) \
@@ -21,13 +26,10 @@ class NavierStokesSolverCG(PdeConstraint):
         self.solution = fd.Function(self.V, name="State")
         self.testfunction = fd.TestFunction(self.V)
 
-        # Define Reynolds' number
-        self.Re = Re
-
         n = fd.FacetNormal(self.mesh_m)
         (x, y) = fd.SpatialCoordinate(self.mesh_m)
         p0 = 10/13 - x/13 #1atleft,0atright
-        #f = fd.Constant((0,-9.81))
+        f = fd.Constant((0,-1))
     
         # Weak form of incompressible Navier-Stokes equations
         z = self.solution
@@ -41,9 +43,11 @@ class NavierStokesSolverCG(PdeConstraint):
             + fd.inner(fd.dot(u,fd.grad(u)),u)*fd.dx
             -       fd.inner(p, fd.div(u))*fd.dx
             +       p0 * fd.inner(n, u)*fd.ds
-            #-       fd.inner(f,u)*fd.dx
             + 0.5 * self.gamma * fd.inner(fd.div(u), fd.div(u))*fd.dx
             )
+        
+        if np.isnan(Fr) == False:
+            L -= (1/self.Fr)**2 *fd.inner(f,u)*fd.dx
 
         # Optimality conditions
         self.F = fd.derivative(L, z)
@@ -120,13 +124,15 @@ class NavierStokesSolverCG(PdeConstraint):
 
 if __name__ == "__main__":
 
-    Re = fd.Constant(1)
-    gamma = fd.Constant(10000)
-    profile = '0012' # specify NACA type
+    Re = 1
+    Fr = np.nan # Specify np.nan for no forcing term
+    gamma = 10000
    
-    mesh = NACAgen(profile)
+    # Load the mesh
+    with fd.CheckpointFile('mesh_gen/naca0012_mesh.h5', 'r') as afile:
+        mesh = afile.load_mesh('naca0012')
 
-    e = NavierStokesSolverCG(mesh, Re, gamma)
+    e = NavierStokesSolverCG(mesh, Re, Fr, gamma)
     e.solve()
     out = fd.File("temp_sol/temp_u.pvd")
     out.write(e.solution.subfunctions[0])

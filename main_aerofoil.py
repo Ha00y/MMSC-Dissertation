@@ -2,6 +2,7 @@ import firedrake as fd
 import fireshape as fs
 import fireshape.zoo as fsz
 import ROL
+import numpy as np
 
 from PDEconstraint_aerofoil_CG import NavierStokesSolverCG
 from PDEconstraint_aerofoil_DG import NavierStokesSolverDG
@@ -10,33 +11,41 @@ from CR_Hdot_inner_product import CRHdotInnerProduct
 from objective_aerofoil import AerofoilObjective
 from cauchy_riemann import CauchyRiemannConstraint
 
-from mesh_gen.naca_gen import NACAgen
-
 # setup problem
-profile = '0012' # specify NACA type
-mesh = NACAgen(profile)
+with fd.CheckpointFile('mesh_gen/naca0012_mesh.h5', 'r') as afile:
+        mesh = afile.load_mesh('naca0012')
+mh = fd.MeshHierarchy(mesh, 2)
+mesh_m = mh[0]
 
-Q = fs.FeControlSpace(mesh)
+Q = fs.FeControlSpace(mesh_m)
 #inner = fs.LaplaceInnerProduct(Q, fixed_bids=[1, 2, 3, 4])
 inner = CRHdotInnerProduct(Q, fixed_bids=[1, 2, 3, 4])
 q = fs.ControlVector(Q, inner)
 
 # setup PDE constraint
-Re = fd.Constant(1) # CHANGE these in DGMassInv too
-gamma = fd.Constant(10000) # CHANGE these in DGMassInv too
+#nu = 1.506*(10**-5)
+#L = 0.3; u = 10
+#Re = fd.Constant(u*L/nu)	
+#Fr = fd.Constant(u/(9.81*L)**0.5)
+Re = 1 # CHANGE these in DGMassInv too
+Fr = np.nan # Specify np.nan for no forcing term
+gamma = 10000 # CHANGE these in DGMassInv too
 
-e = NavierStokesSolverDG(Q.mesh_m, Re, gamma)
-#e = NavierStokesSolverCG(Q.mesh_m, Re, gamma)
+e = NavierStokesSolverDG(Q.mesh_m, Re, Fr, gamma)
+#e = NavierStokesSolverCG(Q.mesh_m, Re, Fr, gamma)
 e.solution.subfunctions[0].rename("Velocity")
 e.solution.subfunctions[1].rename("Pressure")
 
 # save state variable evolution in file u2.pvd or u3.pvd
-if mesh.topological_dimension() == 2:  # in 2D
+if mesh_m.topological_dimension() == 2:  # in 2D
     out = fd.File("output/solution.pvd")
-elif mesh.topological_dimension() == 3:  # in 3D
+elif mesh_m.topological_dimension() == 3:  # in 3D
     out = fd.File("output/solution3D.pvd")
 
 def cb():
+    with fd.CheckpointFile('mesh_gen/naca0012_mesh_shapeopt.h5', 'w') as afile:
+        e.mesh_m.name = 'naca0012'
+        afile.save_mesh(e.mesh_m)
     return out.write(e.solution.subfunctions[0])
 
 # create PDEconstrained objective functional

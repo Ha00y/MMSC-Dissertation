@@ -1,20 +1,26 @@
 from firedrake import *
 from fireshape import PdeConstraint
+import numpy as np
 
 from DG_mass_inv import DGMassInv
-from mesh_gen.naca_gen import NACAgen
 
 class NavierStokesSolverDG(PdeConstraint):
     """Incompressible Navier-Stokes as PDE constraint."""
 
-    def __init__(self, mesh_m, Re, gamma):
+    def __init__(self, mesh, Re, Fr, gamma):
         super().__init__()
-        self.mesh_m = mesh_m
         self.failed_to_solve = False  # when self.solver.solve() fail
-        self.gamma = gamma
+        #self.mesh_m = mesh
+        self.gamma = Constant(gamma)
         self.sigma = Constant(10*(2+1)**2)
-        self.theta = 1
-        self.Re = Re
+        self.Re = Constant(Re)
+        self.Fr = Constant(Fr)
+
+        mh = MeshHierarchy(mesh, 2)
+        self.mesh_m = mh[-1]
+        
+        f = Constant((0,-1))
+        g_D = Constant((0,0))
 
         # Setup problem
         self.V = FunctionSpace(self.mesh_m, "BDM", 2)  # Individual
@@ -29,7 +35,6 @@ class NavierStokesSolverDG(PdeConstraint):
         h = CellDiameter(self.mesh_m)
         (x, y) = SpatialCoordinate(self.mesh_m)
         p0 = 10/13 - x/13 #1atleft,0atright
-        g_D = Constant((0,0))
 
         # Weak form of incompressible Navier-Stokes equations
         z = self.solution
@@ -75,7 +80,10 @@ class NavierStokesSolverDG(PdeConstraint):
                  + (1/self.Re) * p0 * inner(n,v) * ds
                  + F_lagrangian
                  )
-
+        
+        if np.isnan(Fr) == False:
+            self.F -= (1/self.Fr)**2 * inner(f,v) * dx
+        
         # Dirichlet Boundary conditions
         dirichlet_bids = (1, 4, 5)
         self.bcs = DirichletBC(self.W.sub(0), g_D, dirichlet_bids)
@@ -112,7 +120,7 @@ class NavierStokesSolverDG(PdeConstraint):
                     'ksp_rtol': 1e-10,
                     'pc_type': 'fieldsplit',
                     'pc_fieldsplit_type': 'schur',
-                    'pc_fieldsplit_schur_factorization_type': 'upper',
+                    'pc_fieldsplit_schur_factorization_type': 'full',
 
                     'fieldsplit_0': {'ksp_convergence_test': 'skip',
                                     'ksp_max_it': 1,
@@ -151,17 +159,18 @@ class NavierStokesSolverDG(PdeConstraint):
 
 if __name__ == "__main__":
 
-    Re = Constant(1)
-    gamma = Constant(10000)
-    profile = '0012' # specify NACA type
-    
-    mesh = NACAgen(profile)
+    Re = 1
+    Fr = np.nan # Specify np.nan for no forcing term
+    gamma = 10000
 
     # Load the mesh
-    #with CheckpointFile('naca0012_mesh.h5', 'r') as afile:
-    #    mesh = afile.load_mesh('naca0012')
+    #with CheckpointFile('mesh_gen/naca0012_mesh_shapeopt.h5', 'r') as afile:
+    with CheckpointFile('mesh_gen/naca0012_mesh.h5', 'r') as afile:
+        mesh_m = afile.load_mesh('naca0012')
+    #mh = MeshHierarchy(mesh, 2)
+    #mesh_m = mh[0]
 
-    e = NavierStokesSolverDG(mesh, Re, gamma)
+    e = NavierStokesSolverDG(mesh_m, Re, Fr, gamma)
     e.solve()
     out = File("temp_sol/temp_u.pvd")
     out.write(e.solution.subfunctions[0])
