@@ -10,21 +10,19 @@ class NavierStokesSolverDG(PdeConstraint):
     def __init__(self, mesh, Re, Fr, gamma):
         super().__init__()
         self.failed_to_solve = False  # when self.solver.solve() fail
-        #self.mesh_m = mesh
+        self.mesh_m = mesh
         self.gamma = Constant(gamma)
         self.sigma = Constant(10*(2+1)**2)
         self.Re = Constant(Re)
         self.Fr = Constant(Fr)
-
-        mh = MeshHierarchy(mesh, 2)
-        self.mesh_m = mh[-1]
         
         f = Constant((0,-1))
         g_D = Constant((0,0))
 
         # Setup problem
-        self.V = FunctionSpace(self.mesh_m, "BDM", 2)  # Individual
-        self.Q = FunctionSpace(self.mesh_m, "DG", 1)
+        k = 2
+        self.V = FunctionSpace(self.mesh_m, "BDM", k)  # Individual
+        self.Q = FunctionSpace(self.mesh_m, "DG", k-1, variant="integral")
         self.W = MixedFunctionSpace([self.V, self.Q])  # Mixed
 
         # Preallocate solution variables for state equation
@@ -140,9 +138,13 @@ class NavierStokesSolverDG(PdeConstraint):
                                                     'pc_type': 'python'},
                                                     },
 
-                    'fieldsplit_1': {'ksp_type': 'preonly',
-                                    'pc_python_type': __name__ + '.DGMassInv',
-                                    'pc_type': 'python'},
+                    'fieldsplit_1': {'ksp_type': 'richardson',
+                                     'ksp_max_it': 1,
+                                     'ksp_convergence_test': 'skip',
+                                     'ksp_richardson_scale': -(2/float(Re) + float(gamma)),
+                                     'pc_type': 'python',
+                                     'pc_python_type': 'firedrake.MassInvPC',
+                                     'Mp_pc_type': 'jacobi'},
                     }
 
     def solve(self):
@@ -164,13 +166,13 @@ if __name__ == "__main__":
     gamma = 10000
 
     # Load the mesh
-    #with CheckpointFile('mesh_gen/naca0012_mesh_shapeopt.h5', 'r') as afile:
-    with CheckpointFile('mesh_gen/naca0012_mesh.h5', 'r') as afile:
-        mesh_m = afile.load_mesh('naca0012')
-    #mh = MeshHierarchy(mesh, 2)
-    #mesh_m = mh[0]
+    with CheckpointFile('mesh_gen/naca0012_mesh_shapeopt.h5', 'r') as afile:
+    #with CheckpointFile('mesh_gen/naca0012_mesh.h5', 'r') as afile:
+        mesh_m = afile.load_mesh('naca0012_shapeopt')
+    mh = MeshHierarchy(mesh_m, 2)
+    mesh_new = mh[-1]
 
-    e = NavierStokesSolverDG(mesh_m, Re, Fr, gamma)
+    e = NavierStokesSolverDG(mesh_new, Re, Fr, gamma)
     e.solve()
     out = File("temp_sol/temp_u.pvd")
     out.write(e.solution.subfunctions[0])

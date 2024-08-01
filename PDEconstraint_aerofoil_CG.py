@@ -10,7 +10,7 @@ class NavierStokesSolverCG(PdeConstraint):
     def __init__(self, mesh, Re, Fr, gamma):
         super().__init__()
         self.failed_to_solve = False  # when self.solver.solve() fail
-        self.mesh_m = mesh
+        #self.mesh_m = mesh
         self.gamma = fd.Constant(gamma)
         self.Re = fd.Constant(Re)
         self.Fr = fd.Constant(Fr)
