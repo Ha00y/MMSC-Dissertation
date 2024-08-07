@@ -11,15 +11,19 @@ from PDEconstraint_aerofoil_DG import NavierStokesSolverDG
 from CR_Hdot_inner_product import CRHdotInnerProduct
 from objective_aerofoil import AerofoilObjective
 from cauchy_riemann import CauchyRiemannConstraint
+from control_fs import HarryMultiGridControlSpace
 
 # setup problem
 with fd.CheckpointFile('mesh_gen/naca0012_mesh.h5', 'r') as afile:
         mesh = afile.load_mesh('naca0012')
-mh = fd.MeshHierarchy(mesh, 2)
-mesh_m = mh[0]
 
+#mh = fd.MeshHierarchy(mesh, 2)
+#mesh_m = mh[-1]
 #Q = fs.FeControlSpace(mesh_m)
-Q = fs.FeMultiGridControlSpace(mesh_m, degree=2, refinements=2)
+
+Q = HarryMultiGridControlSpace(mesh, degree=1, refinements=2)
+#Q = fs.FeMultiGridControlSpace(mesh, refinements=2)
+
 #inner = fs.LaplaceInnerProduct(Q, fixed_bids=[1, 2, 3, 4])
 inner = CRHdotInnerProduct(Q, fixed_bids=[1, 2, 3, 4])
 q = fs.ControlVector(Q, inner)
@@ -40,9 +44,9 @@ e.solution.subfunctions[1].rename("Pressure")
 
 # save state variable evolution in file u2.pvd or u3.pvd
 if mesh_m.topological_dimension() == 2:  # in 2D
-    out = fd.File("output/solution.pvd")
+    out = fd.VTKFile("output/solution.pvd")
 elif mesh_m.topological_dimension() == 3:  # in 3D
-    out = fd.File("output/solution3D.pvd")
+    out = fd.VTKFile("output/solution3D.pvd")
 
 def cb():
 

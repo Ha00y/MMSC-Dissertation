@@ -90,19 +90,19 @@ class NavierStokesSolverDG(PdeConstraint):
 
         # PDE-solver parameters
         self.nsp = None
-        #self.sp = {
-        #            'snes_monitor': None,
-        #            'snes_converged_reason': None,
-        #            'snes_max_it': 20,
-        #            'snes_atol': 1e-8,
-        #            'snes_rtol': 1e-12,
-        #            'snes_stol': 1e-06,
-        #            'ksp_type': 'preonly',
-        #            'pc_type': 'lu',
-        #            'pc_factor_mat_solver_type': 'mumps'
-        #            }
+        self.sp_lu = {
+                    'snes_monitor': None,
+                    'snes_converged_reason': None,
+                    'snes_max_it': 20,
+                    'snes_atol': 1e-8,
+                    'snes_rtol': 1e-12,
+                    'snes_stol': 1e-06,
+                    'ksp_type': 'preonly',
+                    'pc_type': 'lu',
+                    'pc_factor_mat_solver_type': 'mumps'
+                    }
 
-        self.sp = {
+        self.sp_mg = {
                     'mat_type': 'nest',
                     'snes_monitor': None,
                     'snes_converged_reason': None,
@@ -153,7 +153,7 @@ class NavierStokesSolverDG(PdeConstraint):
         u_old = self.solution.copy(deepcopy=True)
         try:
             solve(self.F == 0, self.solution, bcs=self.bcs,
-                     solver_parameters=self.sp)
+                     solver_parameters=self.sp_lu)
         except ConvergenceError:
             self.failed_to_solve = True
             self.solution.assign(u_old)

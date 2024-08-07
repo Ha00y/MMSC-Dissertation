@@ -1,14 +1,7 @@
-from .innerproduct import InnerProduct
-import ROL
 import firedrake as fd
+import fireshape as fs
 
-# new imports for splines
-from firedrake.petsc import PETSc
-from functools import reduce
-from scipy.interpolate import splev
-import numpy as np
-
-class FeMultiGridControlSpace(ControlSpace):
+class HarryMultiGridControlSpace(fs.ControlSpace):
     """
     FEControlSpace on given mesh and StateSpace on uniformly refined mesh.
 
@@ -31,62 +24,55 @@ class FeMultiGridControlSpace(ControlSpace):
         # one refinement level with `refinements`-many uniform refinements
         self.mh = fd.MeshHierarchy(mesh_r, refinements)
 
-        # Control space on all but most refined mesh
-        self.V_r_coarse = [fd.VectorFunctionSpace(self.mh[i], "CG", degree) for i in range(refinements)]
-        self.V_r_coarse_dual = [V_r.dual() for V_r in self.V_r_coarse]
+        # Coordinate function spaces on all meshes
+        self.Vs = [fd.VectorFunctionSpace(mesh, "CG", degree) for mesh in self.mh]
+        self.V_duals = [V_r.dual() for V_r in self.Vs]
+
+        # Intermediate functions for prolongation and restriction
+        self.tmp_funs = [fd.Function(V) for V in self.Vs]
+        self.tmp_cofuns = [fd.Cofunction(V) for V in self.V_duals]  # not sure about this
 
         # Control space on most refined mesh
         self.mesh_r = self.mh[-1]
-        element = self.V_r_coarse[-1].ufl_element()
-        self.V_r = fd.FunctionSpace(self.mesh_r, element)
-        self.V_r_dual = self.V_r.dual()
+        self.V_r = self.Vs[-1]
+        self.V_r_dual = self.V_duals[-1]
+        element = self.V_r.ufl_element()
 
         # Create self.id and self.T on most refined mesh
         X = fd.SpatialCoordinate(self.mesh_r)
-        self.id = fd.Function(self.V_r).interpolate(X)
-        self.T = fd.Function(self.V_r, name="T")
+        self.id = fd.Function(self.Vs[-1]).interpolate(X)
+        self.T = fd.Function(self.Vs[-1], name="T")
         self.T.assign(self.id)
         self.mesh_m = fd.Mesh(self.T)
         self.V_m = fd.FunctionSpace(self.mesh_m, element)
         self.V_m_dual = self.V_m.dual()
 
     def restrict(self, residual, out):
-        
-        current_residual = residual
-        next_residual = self.V_r_coarse_dual[-1]
-        for i in range(len(self.V_r_coarse_dual)-1):
-            fd.restrict(current_residual, next_residual.cofun)
-            current_residual = next_residual  # Update current residual to the restricted one
-            next_residual = self.V_r_coarse_dual[-i-2]  # Update next residual to the next coarser one
 
-    #def restrict(self, residual, out):
-    #    fd.restrict(residual, out.cofun)
-    #    restrict from fine to coarse
+        for (prev, next) in zip([residual] + self.tmp_cofuns[:-1][::-1], self.tmp_cofuns[:-1][::-1]):
+            fd.restrict(prev, next)
+
+        out.cofun.assign(self.tmp_cofuns[0])
+        print("restricted!", flush=True)
 
     def interpolate(self, vector, out):
-        current_vector = vector
-        next_vector = self.V_r_coarse[1]
-        for i in range(len(self.V_r_coarse)-1):
-            fd.prolong(current_vector, next_vector)
-            current_vector = next_vector  # Update current vector to the prolonged one
-            next_vector = self.V_r_coarse[i+1]  # Update next vector to the next coarser one
-    
-    # def interpolate(self, vector, out):
-    #     fd.prolong(vector.fun, out)
-    #    prolong from coarse to fine
+
+        for (prev, next) in zip([vector.fun] + self.tmp_funs[1:], self.tmp_funs[1:]):
+            fd.prolong(prev, next)
+
+        out.assign(self.tmp_funs[-1])
+        print("prolonged!", flush=True)
 
     def get_zero_vec(self):
-        fun = fd.Function(self.V_r)
-        fun *= 0.
+        fun = fd.Function(self.Vs[0])
         return fun
 
     def get_zero_covec(self):
-        fun = fd.Cofunction(self.V_r_dual)
-        fun *= 0.
+        fun = fd.Cofunction(self.V_duals[0])
         return fun
 
     def get_space_for_inner(self):
-        return (self.V_r, None)
+        return (self.Vs[0], None)
 
     def store(self, vec, filename="control"):
         """
