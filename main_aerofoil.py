@@ -16,9 +16,10 @@ from cauchy_riemann import CauchyRiemannConstraint
 with fd.CheckpointFile('mesh_gen/naca0012_mesh.h5', 'r') as afile:
         mesh = afile.load_mesh('naca0012')
 mh = fd.MeshHierarchy(mesh, 2)
-mesh_m = mh[-1]
+mesh_m = mh[0]
 
-Q = fs.FeControlSpace(mesh_m)
+#Q = fs.FeControlSpace(mesh_m)
+Q = fs.FeMultiGridControlSpace(mesh_m, degree=2, refinements=2)
 #inner = fs.LaplaceInnerProduct(Q, fixed_bids=[1, 2, 3, 4])
 inner = CRHdotInnerProduct(Q, fixed_bids=[1, 2, 3, 4])
 q = fs.ControlVector(Q, inner)
@@ -49,7 +50,7 @@ def cb():
     mh[0].name = 'naca0012_shapeopt'
     with fd.CheckpointFile('mesh_gen/naca0012_mesh_shapeopt.h5', 'w') as afile:
         afile.save_mesh(mh[0])
-    print('SAVED!')
+
     #for i, mesh in enumerate(mh):
     #    mesh.name = f'naca0012_{i}'
     #    with fd.CheckpointFile(f'mesh_gen/naca0012_mesh_shapeopt_{i}.h5', 'w') as afile:
