@@ -11,17 +11,17 @@ from PDEconstraint_aerofoil_DG import NavierStokesSolverDG
 from CR_Hdot_inner_product import CRHdotInnerProduct
 from objective_aerofoil import AerofoilObjective
 from cauchy_riemann import CauchyRiemannConstraint
-from control_fs import HarryMultiGridControlSpace
+from mg_control_space import MultiGridControlSpace
 
 # setup problem
-with fd.CheckpointFile('mesh_gen/naca0012_mesh.h5', 'r') as afile:
-        mesh = afile.load_mesh('naca0012')
-
+with fd.CheckpointFile('mesh_gen/naca2412_mesh.h5', 'r') as afile:
+    mesh = afile.load_mesh('naca0012')
+mesh_m = mesh
 #mh = fd.MeshHierarchy(mesh, 2)
 #mesh_m = mh[-1]
-#Q = fs.FeControlSpace(mesh_m)
 
-Q = HarryMultiGridControlSpace(mesh, degree=1, refinements=2)
+#Q = fs.FeControlSpace(mesh_m)
+Q = MultiGridControlSpace(mesh_m, degree=1, refinements=2)
 #Q = fs.FeMultiGridControlSpace(mesh, refinements=2)
 
 #inner = fs.LaplaceInnerProduct(Q, fixed_bids=[1, 2, 3, 4])
@@ -54,11 +54,6 @@ def cb():
     mh[0].name = 'naca0012_shapeopt'
     with fd.CheckpointFile('mesh_gen/naca0012_mesh_shapeopt.h5', 'w') as afile:
         afile.save_mesh(mh[0])
-
-    #for i, mesh in enumerate(mh):
-    #    mesh.name = f'naca0012_{i}'
-    #    with fd.CheckpointFile(f'mesh_gen/naca0012_mesh_shapeopt_{i}.h5', 'w') as afile:
-    #        afile.save_mesh(mesh)
 
     return out.write(e.solution.subfunctions[0])
 

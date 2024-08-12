@@ -2,25 +2,21 @@ import firedrake as fd
 from fireshape import PdeConstraint
 import numpy as np
 
-from DG_mass_inv import DGMassInv
-
 class NavierStokesSolverCG(PdeConstraint):
     """Incompressible Navier-Stokes as PDE constraint."""
 
     def __init__(self, mesh, Re, Fr, gamma):
         super().__init__()
         self.failed_to_solve = False  # when self.solver.solve() fail
-        #self.mesh_m = mesh
+        self.mesh_m = mesh
         self.gamma = fd.Constant(gamma)
         self.Re = fd.Constant(Re)
         self.Fr = fd.Constant(Fr)
 
-        mh = fd.MeshHierarchy(mesh, 2)
-        self.mesh_m = mh[-1]
-
         # Setup problem, Taylor-Hood finite elements
-        self.V = fd.VectorFunctionSpace(self.mesh_m, "CG", 4) \
-            * fd.FunctionSpace(self.mesh_m, "DG", 3)
+        k = 4
+        self.V = fd.VectorFunctionSpace(self.mesh_m, "CG", k) \
+            * fd.FunctionSpace(self.mesh_m, "DG", k-1, variant="integral")
 
         # Preallocate solution variables for state equation
         self.solution = fd.Function(self.V, name="State")
@@ -57,19 +53,19 @@ class NavierStokesSolverCG(PdeConstraint):
 
         # PDE-solver parameters
         self.nsp = None
-        #self.sp = {
-        #            'snes_monitor': None,
-        #            'snes_converged_reason': None,
-        #            'snes_max_it': 20,
-        #            'snes_atol': 1e-8,
-        #            'snes_rtol': 1e-12,
-        #            'snes_stol': 1e-06,
-        #            'ksp_type': 'preonly',
-        #            'pc_type': 'lu',
-        #           'pc_factor_mat_solver_type': 'mumps'
-        #            }
+        self.sp_lu = {
+                    'snes_monitor': None,
+                    'snes_converged_reason': None,
+                    'snes_max_it': 20,
+                    'snes_atol': 1e-8,
+                    'snes_rtol': 1e-12,
+                    'snes_stol': 1e-06,
+                    'ksp_type': 'preonly',
+                    'pc_type': 'lu',
+                   'pc_factor_mat_solver_type': 'mumps'
+                    }
         
-        self.sp = {
+        self.sp_mg = {
                     'mat_type': 'nest',
                     'snes_monitor': None,
                     'snes_converged_reason': None,
@@ -105,9 +101,13 @@ class NavierStokesSolverCG(PdeConstraint):
                                                     'pc_type': 'python'},
                                                     },
 
-                    'fieldsplit_1': {'ksp_type': 'preonly',
-                                    'pc_python_type': __name__ + '.DGMassInv',
-                                    'pc_type': 'python'},
+                    'fieldsplit_1': {'ksp_type': 'richardson',
+                                     'ksp_max_it': 1,
+                                     'ksp_convergence_test': 'skip',
+                                     'ksp_richardson_scale': -(2/float(Re) + float(gamma)),
+                                     'pc_type': 'python',
+                                     'pc_python_type': 'firedrake.MassInvPC',
+                                     'Mp_pc_type': 'jacobi'},
                     }
 
     def solve(self):
@@ -116,7 +116,7 @@ class NavierStokesSolverCG(PdeConstraint):
         u_old = self.solution.copy(deepcopy=True)
         try:
             fd.solve(self.F == 0, self.solution, bcs=self.bcs,
-                     solver_parameters=self.sp)
+                     solver_parameters=self.sp_mg)
         except fd.ConvergenceError:
             self.failed_to_solve = True
             self.solution.assign(u_old)
@@ -134,5 +134,5 @@ if __name__ == "__main__":
 
     e = NavierStokesSolverCG(mesh, Re, Fr, gamma)
     e.solve()
-    out = fd.File("temp_sol/temp_u.pvd")
+    out = fd.VTKFile("temp_sol/temp_u.pvd")
     out.write(e.solution.subfunctions[0])

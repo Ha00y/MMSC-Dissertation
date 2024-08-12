@@ -27,9 +27,9 @@ def NACAgen(profile):
     domain.edges.Max(X).name="outlet"
     geo = OCCGeometry(domain, dim=2)
 
-    ngmesh = geo.GenerateMesh(maxh=1)
+    ngmesh = geo.GenerateMesh(maxh=0.5)
     mesh = fd.Mesh(ngmesh)
-    mesh.name = 'naca0012'
+    mesh.name = f'naca{int(profile)}'
     #mh = fd.MeshHierarchy(mesh, 2)
     #mesh = mh[-1]
 
@@ -106,10 +106,11 @@ def linspace(start,stop,np):
 if __name__ == "__main__":
 
     # Generate the mesh
-    mesh = NACAgen('0012')
+    #mesh = NACAgen('0012')
+    mesh = NACAgen('2412')
 
     # Save the mesh
-    with fd.CheckpointFile('mesh_gen/naca0012_mesh.h5', 'w') as afile:
+    with fd.CheckpointFile('mesh_gen/naca2412_mesh.h5', 'w') as afile:
         afile.save_mesh(mesh)
 
     # Load the mesh

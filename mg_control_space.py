@@ -1,7 +1,7 @@
 import firedrake as fd
 import fireshape as fs
 
-class HarryMultiGridControlSpace(fs.ControlSpace):
+class MultiGridControlSpace(fs.ControlSpace):
     """
     FEControlSpace on given mesh and StateSpace on uniformly refined mesh.
 
@@ -14,29 +14,27 @@ class HarryMultiGridControlSpace(fs.ControlSpace):
         refinements: type int, number of uniform refinements to perform
                      to obtain the StateSpace mesh.
         degree: type int, degree of Lagrange basis functions of ControlSpace.
-
-    Note: as of 15.11.2023, higher-order meshes are not supported, that is,
-    mesh_r has to be a polygonal mesh (mesh_m can still be of higher-order).
     """
 
-    def __init__(self, mesh_r, refinements=1, degree=1):
+    def __init__(self, mesh, refinements=1, degree=1):
 
         # one refinement level with `refinements`-many uniform refinements
-        self.mh = fd.MeshHierarchy(mesh_r, refinements)
+        self.mh = fd.MeshHierarchy(mesh, refinements)
 
         # Coordinate function spaces on all meshes
         self.Vs = [fd.VectorFunctionSpace(mesh, "CG", degree) for mesh in self.mh]
-        self.V_duals = [V_r.dual() for V_r in self.Vs]
+        self.V_duals = [V.dual() for V in self.Vs]
 
         # Intermediate functions for prolongation and restriction
         self.tmp_funs = [fd.Function(V) for V in self.Vs]
-        self.tmp_cofuns = [fd.Cofunction(V) for V in self.V_duals]  # not sure about this
+        self.tmp_cofuns = [fd.Cofunction(V_dual) for V_dual in self.V_duals]  # not sure about this
 
         # Control space on most refined mesh
         self.mesh_r = self.mh[-1]
         self.V_r = self.Vs[-1]
         self.V_r_dual = self.V_duals[-1]
         element = self.V_r.ufl_element()
+        self.ids = [fd.Function(mesh.coordinates) for mesh in self.mh]
 
         # Create self.id and self.T on most refined mesh
         X = fd.SpatialCoordinate(self.mesh_r)
@@ -51,9 +49,9 @@ class HarryMultiGridControlSpace(fs.ControlSpace):
 
         for (prev, next) in zip([residual] + self.tmp_cofuns[:-1][::-1], self.tmp_cofuns[:-1][::-1]):
             fd.restrict(prev, next)
-
+   
         out.cofun.assign(self.tmp_cofuns[0])
-        print("restricted!", flush=True)
+        #print("restricted!", flush=True)
 
     def interpolate(self, vector, out):
 
@@ -61,7 +59,24 @@ class HarryMultiGridControlSpace(fs.ControlSpace):
             fd.prolong(prev, next)
 
         out.assign(self.tmp_funs[-1])
-        print("prolonged!", flush=True)
+        #print("prolonged!", flush=True)
+
+    def update_domain(self, q: 'ControlVector'):
+
+        out = fs.ControlSpace.update_domain(self, q)
+
+        for (prev, next) in zip(self.tmp_funs[1:], self.tmp_funs[:-1]):
+            fd.inject(prev, next)
+
+        for (mesh, id, qh) in zip(self.mh, self.ids, self.tmp_funs):
+            mesh.coordinates.assign(id + qh)
+
+        for i, mesh in enumerate(self.mh):
+            with fd.CheckpointFile(f'mesh_gen/naca0012_mesh_mg_{i}.h5', 'w') as afile:
+                mesh.name = 'naca0012_mg'
+                afile.save_mesh(mesh)
+
+        return out
 
     def get_zero_vec(self):
         fun = fd.Function(self.Vs[0])

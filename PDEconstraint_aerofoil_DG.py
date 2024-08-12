@@ -2,8 +2,6 @@ from firedrake import *
 from fireshape import PdeConstraint
 import numpy as np
 
-from DG_mass_inv import DGMassInv
-
 class NavierStokesSolverDG(PdeConstraint):
     """Incompressible Navier-Stokes as PDE constraint."""
 
@@ -75,7 +73,7 @@ class NavierStokesSolverDG(PdeConstraint):
                  + c(u,v)
                  + b(v,p)
                  + b(u,q)
-                 + (1/self.Re) * p0 * inner(n,v) * ds
+                 + p0 * inner(n,v) * ds
                  + F_lagrangian
                  )
         
@@ -166,13 +164,14 @@ if __name__ == "__main__":
     gamma = 10000
 
     # Load the mesh
-    with CheckpointFile('mesh_gen/naca0012_mesh_shapeopt.h5', 'r') as afile:
+    with CheckpointFile('mesh_gen/naca0012_mesh_mg_0.h5', 'r') as afile:
+    #with CheckpointFile('mesh_gen/naca0012_mesh_shapeopt.h5', 'r') as afile:
     #with CheckpointFile('mesh_gen/naca0012_mesh.h5', 'r') as afile:
-        mesh_m = afile.load_mesh('naca0012_shapeopt')
-    mh = MeshHierarchy(mesh_m, 2)
-    mesh_new = mh[-1]
+        mesh_m = afile.load_mesh('naca0012_mg')
+    #mh = MeshHierarchy(mesh_m, 2)
+    #mesh_m = mh[-1]
 
-    e = NavierStokesSolverDG(mesh_new, Re, Fr, gamma)
+    e = NavierStokesSolverDG(mesh_m, Re, Fr, gamma)
     e.solve()
-    out = File("temp_sol/temp_u.pvd")
+    out = VTKFile("temp_sol/temp_u.pvd")
     out.write(e.solution.subfunctions[0])
