@@ -48,15 +48,10 @@ class MultiGridControlSpace(fs.ControlSpace):
 
         # mesh_T has lost all hierarchy information, restore
         self.mh_T = fd.MeshHierarchy(cmesh_T, refinements)
-        self.Ts = [fd.Function(V, name="T") for V in self.Vs]
-
-        for (mesh_T, T) in zip(self.mh_T, self.Ts):
-            T.interpolate(fd.SpatialCoordinate(mesh_T))
-            mesh_T.coordinates = T.topological
-
-        self.T = self.Ts[-1]
+        self.T = fd.Function(fd.FunctionSpace(self.mh_T[-1], element), name="T")
+        self.T.interpolate(fd.SpatialCoordinate(self.mh_T[-1]))
         self.id = fd.Function(self.T)
-        self.mesh_m = self.mh_T[-1]
+        self.mesh_m = fd.Mesh(self.T)
         self.V_m = fd.FunctionSpace(self.mesh_m, element)
         self.V_m_dual = self.V_m.dual()
 
@@ -82,18 +77,18 @@ class MultiGridControlSpace(fs.ControlSpace):
 
         out = fs.ControlSpace.update_domain(self, q)
 
-        (mh, _) = get_level(self.V_m.mesh())
+        mh = self.mh_T
+        coords = [self.T] + [mesh.coordinates for mesh in reversed(mh[:-1])]
 
         print("mh: ", mh, flush=True)
 
         i = 0
         fd.VTKFile(f"/tmp/coordinates-{i}.pvd").write(self.V_m.mesh().coordinates)
 
-        for (prev, next) in zip(reversed(mh), reversed(mh[:-1])):
-            import ipdb; ipdb.set_trace()
-            fd.inject(prev.coordinates, next.coordinates)
+        for (prev, next) in zip(coords, coords[1:]):
+            fd.inject(prev, next)
             i += 1
-            fd.VTKFile(f"/tmp/coordinates-{i}.pvd").write(next.coordinates)
+            fd.VTKFile(f"/tmp/coordinates-{i}.pvd").write(next)
 
         print("Updated domain", flush=True)
         import sys; sys.exit(1)
