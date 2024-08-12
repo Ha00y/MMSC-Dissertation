@@ -1,5 +1,7 @@
 import firedrake as fd
 import fireshape as fs
+from firedrake.mg.utils import get_level
+from itertools import islice
 
 class MultiGridControlSpace(fs.ControlSpace):
     """
@@ -34,28 +36,43 @@ class MultiGridControlSpace(fs.ControlSpace):
         self.V_r = self.Vs[-1]
         self.V_r_dual = self.V_duals[-1]
         element = self.V_r.ufl_element()
-        self.ids = [fd.Function(mesh.coordinates) for mesh in self.mh]
 
-        # Create self.id and self.T on most refined mesh
-        X = fd.SpatialCoordinate(self.mesh_r)
-        self.id = fd.Function(self.Vs[-1]).interpolate(X)
-        self.T = fd.Function(self.Vs[-1], name="T")
-        self.T.assign(self.id)
-        self.mesh_m = fd.Mesh(self.T)
+        # Create another copy of mesh, to be updated with the T on the levels
+        # This is hideous
+        with fd.CheckpointFile("/tmp/argh.h5", "w") as f:
+            mesh.name = "mesh"
+            f.save_mesh(mesh)
+
+        with fd.CheckpointFile("/tmp/argh.h5", "r") as f:
+            cmesh_T = f.load_mesh("mesh")
+
+        # mesh_T has lost all hierarchy information, restore
+        self.mh_T = fd.MeshHierarchy(cmesh_T, refinements)
+        self.Ts = [fd.Function(V, name="T") for V in self.Vs]
+
+        for (mesh_T, T) in zip(self.mh_T, self.Ts):
+            T.interpolate(fd.SpatialCoordinate(mesh_T))
+            mesh_T.coordinates = T.topological
+
+        self.T = self.Ts[-1]
+        self.id = fd.Function(self.T)
+        self.mesh_m = self.mh_T[-1]
         self.V_m = fd.FunctionSpace(self.mesh_m, element)
         self.V_m_dual = self.V_m.dual()
 
     def restrict(self, residual, out):
 
-        for (prev, next) in zip([residual] + self.tmp_cofuns[:-1][::-1], self.tmp_cofuns[:-1][::-1]):
+        self.tmp_cofuns[-1].dat.data[:] = residual.dat.data
+        for (prev, next) in zip(self.tmp_cofuns[::-1], self.tmp_cofuns[:-1][::-1]):
             fd.restrict(prev, next)
-   
+
         out.cofun.assign(self.tmp_cofuns[0])
         #print("restricted!", flush=True)
 
     def interpolate(self, vector, out):
 
-        for (prev, next) in zip([vector.fun] + self.tmp_funs[1:], self.tmp_funs[1:]):
+        self.tmp_funs[0].dat.data[:] = vector.fun.dat.data
+        for (prev, next) in zip(self.tmp_funs, self.tmp_funs[1:]):
             fd.prolong(prev, next)
 
         out.assign(self.tmp_funs[-1])
@@ -65,16 +82,26 @@ class MultiGridControlSpace(fs.ControlSpace):
 
         out = fs.ControlSpace.update_domain(self, q)
 
-        for (prev, next) in zip(self.tmp_funs[1:], self.tmp_funs[:-1]):
-            fd.inject(prev, next)
+        (mh, _) = get_level(self.V_m.mesh())
 
-        for (mesh, id, qh) in zip(self.mh, self.ids, self.tmp_funs):
-            mesh.coordinates.assign(id + qh)
+        print("mh: ", mh, flush=True)
 
-        for i, mesh in enumerate(self.mh):
-            with fd.CheckpointFile(f'mesh_gen/naca0012_mesh_mg_{i}.h5', 'w') as afile:
-                mesh.name = 'naca0012_mg'
-                afile.save_mesh(mesh)
+        i = 0
+        fd.VTKFile(f"/tmp/coordinates-{i}.pvd").write(self.V_m.mesh().coordinates)
+
+        for (prev, next) in zip(reversed(mh), reversed(mh[:-1])):
+            import ipdb; ipdb.set_trace()
+            fd.inject(prev.coordinates, next.coordinates)
+            i += 1
+            fd.VTKFile(f"/tmp/coordinates-{i}.pvd").write(next.coordinates)
+
+        print("Updated domain", flush=True)
+        import sys; sys.exit(1)
+
+        #for i, mesh in enumerate(self.mh):
+        #    with fd.CheckpointFile(f'mesh_gen/naca0012_mesh_mg_{i}.h5', 'w') as afile:
+        #        mesh.name = 'naca0012_mg'
+        #        afile.save_mesh(mesh)
 
         return out
 
