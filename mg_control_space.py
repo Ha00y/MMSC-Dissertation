@@ -4,23 +4,8 @@ from firedrake.mg.utils import get_level
 from itertools import islice
 
 class MultiGridControlSpace(fs.ControlSpace):
-    """
-    FEControlSpace on given mesh and StateSpace on uniformly refined mesh.
-
-    Use the provided mesh to construct a Lagrangian finite element control
-    space. Then, create a finer mesh using `refinements`-many uniform
-    refinements and construct a representative of ControlVector that is
-    compatible with the state space.
-
-    Inputs:
-        refinements: type int, number of uniform refinements to perform
-                     to obtain the StateSpace mesh.
-        degree: type int, degree of Lagrange basis functions of ControlSpace.
-    """
-
     def __init__(self, mesh, refinements=1, degree=1):
 
-        # one refinement level with `refinements`-many uniform refinements
         self.mh = fd.MeshHierarchy(mesh, refinements)
 
         # Coordinate function spaces on all meshes
@@ -37,21 +22,25 @@ class MultiGridControlSpace(fs.ControlSpace):
         self.V_r_dual = self.V_duals[-1]
         element = self.V_r.ufl_element()
 
-        # Create another copy of mesh, to be updated with the T on the levels
-        # This is hideous
-        with fd.CheckpointFile("/tmp/argh.h5", "w") as f:
-            mesh.name = "mesh"
-            f.save_mesh(mesh)
+        # Make a bunch of vector transformations
+        self.Ts = [fd.Function(V, name="T") for V in self.Vs]
+        [T.interpolate(fd.SpatialCoordinate(m)) for (m, T) in zip(self.mh, self.Ts)]
 
-        with fd.CheckpointFile("/tmp/argh.h5", "r") as f:
-            cmesh_T = f.load_mesh("mesh")
-
-        # mesh_T has lost all hierarchy information, restore
-        self.mh_T = fd.MeshHierarchy(cmesh_T, refinements)
-        self.T = fd.Function(fd.FunctionSpace(self.mh_T[-1], element), name="T")
-        self.T.interpolate(fd.SpatialCoordinate(self.mh_T[-1]))
+        # Expose public variables
+        self.T = self.Ts[-1]
         self.id = fd.Function(self.T)
-        self.mesh_m = fd.Mesh(self.T)
+
+        # Make mapped meshes
+        mapped_meshes = [fd.Mesh(T) for T in self.Ts]
+
+        # Make new mesh hierarchy out of this
+        self.mh_mapped = fd.HierarchyBase(mapped_meshes, self.mh.coarse_to_fine_cells,
+                                                         self.mh.fine_to_coarse_cells,
+                                                         self.mh.refinements_per_level,
+                                                         self.mh.nested)
+
+        # Expose more public variables
+        self.mesh_m = self.mh_mapped[-1]
         self.V_m = fd.FunctionSpace(self.mesh_m, element)
         self.V_m_dual = self.V_m.dual()
 
@@ -77,21 +66,17 @@ class MultiGridControlSpace(fs.ControlSpace):
 
         out = fs.ControlSpace.update_domain(self, q)
 
-        mh = self.mh_T
-        coords = [self.T] + [mesh.coordinates for mesh in reversed(mh[:-1])]
-
-        print("mh: ", mh, flush=True)
-
         i = 0
         fd.VTKFile(f"/tmp/coordinates-{i}.pvd").write(self.V_m.mesh().coordinates)
 
-        for (prev, next) in zip(coords, coords[1:]):
+        Ts = self.Ts
+        for (prev, next) in zip(Ts[::-1], Ts[::-1][1:]):
             fd.inject(prev, next)
             i += 1
             fd.VTKFile(f"/tmp/coordinates-{i}.pvd").write(next)
 
         print("Updated domain", flush=True)
-        import sys; sys.exit(1)
+        #import sys; sys.exit(1)
 
         #for i, mesh in enumerate(self.mh):
         #    with fd.CheckpointFile(f'mesh_gen/naca0012_mesh_mg_{i}.h5', 'w') as afile:
