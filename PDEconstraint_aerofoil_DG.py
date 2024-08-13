@@ -164,7 +164,7 @@ if __name__ == "__main__":
     gamma = 10000
 
     # Load the mesh
-    with CheckpointFile('mesh_gen/naca0012_mesh_mg_0.h5', 'r') as afile:
+    with CheckpointFile('mesh_gen/naca0012_mesh_mg_1.h5', 'r') as afile:
     #with CheckpointFile('mesh_gen/naca0012_mesh_shapeopt.h5', 'r') as afile:
     #with CheckpointFile('mesh_gen/naca0012_mesh.h5', 'r') as afile:
         mesh_m = afile.load_mesh('naca0012_mg')

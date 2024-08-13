@@ -3,7 +3,9 @@ temp_sol/
 outputH(sym)/
 outputH1/
 mesh_gen/__pycache__
-
+tmp/
+mesh_gen/naca0012_mesh
+mesh_gen/naca2412_mesh
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -67,15 +67,19 @@ class MultiGridControlSpace(fs.ControlSpace):
         out = fs.ControlSpace.update_domain(self, q)
 
         i = 0
-        fd.VTKFile(f"/tmp/coordinates-{i}.pvd").write(self.V_m.mesh().coordinates)
+        fd.VTKFile(f"tmp/coordinates-{i}.pvd").write(self.V_m.mesh().coordinates)
 
         Ts = self.Ts
         for (prev, next) in zip(Ts[::-1], Ts[::-1][1:]):
             fd.inject(prev, next)
             i += 1
-            fd.VTKFile(f"/tmp/coordinates-{i}.pvd").write(next)
+            fd.VTKFile(f"tmp/coordinates-{i}.pvd").write(next)
 
-        print("Updated domain", flush=True)
+        for T in self.Ts:
+            fd.VTKFile(f"tmp/Ts-{i}.pvd").write(T)
+
+
+        #print("Updated domain", flush=True)
         #import sys; sys.exit(1)
 
         #for i, mesh in enumerate(self.mh):

@@ -14,7 +14,7 @@ from cauchy_riemann import CauchyRiemannConstraint
 from mg_control_space import MultiGridControlSpace
 
 # setup problem
-with fd.CheckpointFile('mesh_gen/naca2412_mesh.h5', 'r') as afile:
+with fd.CheckpointFile('mesh_gen/naca0012_mesh.h5', 'r') as afile:
     mesh = afile.load_mesh('naca0012')
 mesh_m = mesh
 #mh = fd.MeshHierarchy(mesh, 2)
