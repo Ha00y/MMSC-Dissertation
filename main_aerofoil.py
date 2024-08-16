@@ -4,6 +4,7 @@ import fireshape as fs
 import fireshape.zoo as fsz
 import ROL
 import numpy as np
+from ROL.numpy_vector import NumpyVector
 
 from PDEconstraint_aerofoil_CG import NavierStokesSolverCG
 from PDEconstraint_aerofoil_DG import NavierStokesSolverDG
@@ -71,7 +72,7 @@ J = J + J_q + J_cr
 vol = fsz.VolumeFunctional(Q)
 initial_vol = vol.value(q, None)
 econ = fs.EqualityConstraint([vol], target_value=[initial_vol])
-emul = ROL.StdVector(1)
+emul = NumpyVector(1)
 
 # ROL parameters
 params_dict = {
