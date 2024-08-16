@@ -1,7 +1,5 @@
 import firedrake as fd
 import fireshape as fs
-from firedrake.mg.utils import get_level
-from itertools import islice
 
 class MultiGridControlSpace(fs.ControlSpace):
     def __init__(self, mesh, refinements=1, degree=1):
@@ -12,82 +10,94 @@ class MultiGridControlSpace(fs.ControlSpace):
         self.Vs = [fd.VectorFunctionSpace(mesh, "CG", degree) for mesh in self.mh]
         self.V_duals = [V.dual() for V in self.Vs]
 
-        # Intermediate functions for prolongation and restriction
-        self.tmp_funs = [fd.Function(V) for V in self.Vs]
-        self.tmp_cofuns = [fd.Cofunction(V_dual) for V_dual in self.V_duals]  # not sure about this
-
-        # Control space on most refined mesh
-        self.mesh_r = self.mh[-1]
-        self.V_r = self.Vs[-1]
-        self.V_r_dual = self.V_duals[-1]
-        element = self.V_r.ufl_element()
-
-        # Make a bunch of vector transformations
+        # Create hierarchy of transformations, identities, and cofunctions
+        self.ids = [fd.Function(V) for V in self.Vs]
+        [id_.interpolate(fd.SpatialCoordinate(m)) for (m, id_) in zip(self.mh, self.ids)]
         self.Ts = [fd.Function(V, name="T") for V in self.Vs]
-        [T.interpolate(fd.SpatialCoordinate(m)) for (m, T) in zip(self.mh, self.Ts)]
+        [T.assign(id_) for (T, id_) in zip(self.Ts, self.ids)]
+        self.cofuns = [fd.Cofunction(V_dual) for V_dual in self.V_duals]
 
-        # Expose public variables
-        self.T = self.Ts[-1]
-        self.id = fd.Function(self.T)
-
-        # Make mapped meshes
+        # Create mesh hierarchy reflecting self.Ts
         mapped_meshes = [fd.Mesh(T) for T in self.Ts]
-
-        # Make new mesh hierarchy out of this
         self.mh_mapped = fd.HierarchyBase(mapped_meshes, self.mh.coarse_to_fine_cells,
                                                          self.mh.fine_to_coarse_cells,
                                                          self.mh.refinements_per_level,
                                                          self.mh.nested)
 
-        # Expose more public variables
+        # Create moved mesh and V_m (and dual) to evaluate and collect shape derivative
         self.mesh_m = self.mh_mapped[-1]
+        element = self.Vs[-1].ufl_element
         self.V_m = fd.FunctionSpace(self.mesh_m, element)
         self.V_m_dual = self.V_m.dual()
 
     def restrict(self, residual, out):
 
-        self.tmp_cofuns[-1].dat.data[:] = residual.dat.data
-        for (prev, next) in zip(self.tmp_cofuns[::-1], self.tmp_cofuns[:-1][::-1]):
+        self.cofuns[-1].assign(residual)
+        for (prev, next) in zip(self.cofuns[::-1], self.cofuns[:-1][::-1]):
             fd.restrict(prev, next)
-
-        out.cofun.assign(self.tmp_cofuns[0])
-        #print("restricted!", flush=True)
+        out.cofun.assign(self.cofuns[0])
 
     def interpolate(self, vector, out):
-
-        self.tmp_funs[0].dat.data[:] = vector.fun.dat.data
-        for (prev, next) in zip(self.tmp_funs, self.tmp_funs[1:]):
+        # out is unused, but keep it for API compatibility
+        self.tmp_funs[0].assign(vector.fun)
+        for (prev, next) in zip(self.Ts, self.Ts[1:]):
             fd.prolong(prev, next)
 
-        out.assign(self.tmp_funs[-1])
-        #print("prolonged!", flush=True)
+    def update_domain(self, q: 'ControlVector'):  # not happy of overwriting this
+        """
+        Update the interpolant self.T with q
+        """
 
-    def update_domain(self, q: 'ControlVector'):
+        # Check if the new control is different from the last one.  ROL is
+        # sometimes a bit strange in that it calls update on the same value
+        # more than once, in that case we don't want to solve the PDE again.
+        if not hasattr(self, 'lastq') or self.lastq is None:
+            self.lastq = q.clone()
+            self.lastq.set(q)
+        else:
+            self.lastq.axpy(-1., q)
+            # calculate l2 norm (faster)
+            diff = self.lastq.vec_ro().norm()
+            self.lastq.axpy(+1., q)
+            if diff < 1e-20:
+                return False
+            else:
+                self.lastq.set(q)
+        # pass slef.Ts only for API compatibility
+        q.to_coordinatefield(self.Ts)
+        # add identity to every function in the hierarchy
+        # this is the only reason we need to overwrite update_domain
+        #[T += id_ for (T, id_) in zip(self.Ts, self.ids)]
+        [T.assign(T + id_) for (T, id_) in zip(self.Ts, self.ids)]
+        return True
 
-        out = fs.ControlSpace.update_domain(self, q)
+    # kept this as a comment for your debugging utils
+    #def update_domain(self, q: 'ControlVector'):
 
-        i = 0
-        fd.VTKFile(f"tmp/coordinates-{i}.pvd").write(self.V_m.mesh().coordinates)
+    #    out = fs.ControlSpace.update_domain(self, q)
 
-        Ts = self.Ts
-        for (prev, next) in zip(Ts[::-1], Ts[::-1][1:]):
-            fd.inject(prev, next)
-            i += 1
-            fd.VTKFile(f"tmp/coordinates-{i}.pvd").write(next)
+    #    i = 0
+    #    fd.VTKFile(f"tmp/coordinates-{i}.pvd").write(self.V_m.mesh().coordinates)
 
-        for T in self.Ts:
-            fd.VTKFile(f"tmp/Ts-{i}.pvd").write(T)
+    #    Ts = self.Ts
+    #    for (prev, next) in zip(Ts[::-1], Ts[::-1][1:]):
+    #        fd.inject(prev, next)
+    #        i += 1
+    #        fd.VTKFile(f"tmp/coordinates-{i}.pvd").write(next)
+
+    #    for T in self.Ts:
+    #        fd.VTKFile(f"tmp/Ts-{i}.pvd").write(T)
 
 
-        #print("Updated domain", flush=True)
-        #import sys; sys.exit(1)
+    #    #print("Updated domain", flush=True)
+    #    #import sys; sys.exit(1)
 
-        #for i, mesh in enumerate(self.mh):
-        #    with fd.CheckpointFile(f'mesh_gen/naca0012_mesh_mg_{i}.h5', 'w') as afile:
-        #        mesh.name = 'naca0012_mg'
-        #        afile.save_mesh(mesh)
+    #    #for i, mesh in enumerate(self.mh):
+    #    #    with fd.CheckpointFile(f'mesh_gen/naca0012_mesh_mg_{i}.h5', 'w') as afile:
+    #    #        mesh.name = 'naca0012_mg'
+    #    #        afile.save_mesh(mesh)
 
-        return out
+    #    return out
 
     def get_zero_vec(self):
         fun = fd.Function(self.Vs[0])
