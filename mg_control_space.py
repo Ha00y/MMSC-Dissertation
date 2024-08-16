@@ -10,12 +10,18 @@ class MultiGridControlSpace(fs.ControlSpace):
         self.Vs = [fd.VectorFunctionSpace(mesh, "CG", degree) for mesh in self.mh]
         self.V_duals = [V.dual() for V in self.Vs]
 
+        # Control space on most refined mesh
+        self.mesh_r = self.mh[-1]
+        self.V_r = self.Vs[-1]
+        self.V_r_dual = self.V_duals[-1]
+
         # Create hierarchy of transformations, identities, and cofunctions
         self.ids = [fd.Function(V) for V in self.Vs]
         [id_.interpolate(fd.SpatialCoordinate(m)) for (m, id_) in zip(self.mh, self.ids)]
         self.Ts = [fd.Function(V, name="T") for V in self.Vs]
         [T.assign(id_) for (T, id_) in zip(self.Ts, self.ids)]
         self.cofuns = [fd.Cofunction(V_dual) for V_dual in self.V_duals]
+        self.T = self.Ts[-1]
 
         # Create mesh hierarchy reflecting self.Ts
         mapped_meshes = [fd.Mesh(T) for T in self.Ts]
@@ -26,7 +32,7 @@ class MultiGridControlSpace(fs.ControlSpace):
 
         # Create moved mesh and V_m (and dual) to evaluate and collect shape derivative
         self.mesh_m = self.mh_mapped[-1]
-        element = self.Vs[-1].ufl_element
+        element = self.Vs[-1].ufl_element()
         self.V_m = fd.FunctionSpace(self.mesh_m, element)
         self.V_m_dual = self.V_m.dual()
 
@@ -39,7 +45,7 @@ class MultiGridControlSpace(fs.ControlSpace):
 
     def interpolate(self, vector, out):
         # out is unused, but keep it for API compatibility
-        self.tmp_funs[0].assign(vector.fun)
+        self.Ts[0].assign(vector.fun)
         for (prev, next) in zip(self.Ts, self.Ts[1:]):
             fd.prolong(prev, next)
 
