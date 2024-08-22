@@ -2,41 +2,6 @@ from firedrake import *
 from fireshape import PdeConstraint
 import numpy as np
 
-class MyTransferManager(object):
-    def __init__(self):
-        self.builtin_tm = TransferManager(use_averaging=False)
-
-    def prolong(self, source, target):
-        print("Inside my prolongation!", flush=True)
-        self.builtin_tm.prolong(source, target)
-        div_s = norm(div(source))
-        div_t = norm(div(target))
-        print("||div(source)||: ", div_s)
-        print("||div(target)||: ", div_t)
-
-        if div_t >= 2*div_s:
-            print("Warning. Prolongation not continuous?")
-            V_s = source.function_space()
-            Q_s = FunctionSpace(V_s.mesh(), "DG", 1)
-            div_source = project(div(source), Q_s)
-            div_source.rename("DivergenceSource")
-            V_t = target.function_space()
-            Q_t = FunctionSpace(V_t.mesh(), "DG", 1)
-            div_target = project(div(target), Q_t)
-            div_target.rename("DivergenceTarget")
-            File("/tmp/source.pvd").write(source, div_source)
-            File("/tmp/target.pvd").write(target, div_target)
-            print("Saving PVD files and quitting.")
-            import sys; sys.exit(1)
-
-
-    def restrict(self, source, target):
-        self.builtin_tm.restrict(source, target)
-
-    def inject(self, source, target):
-        self.builtin_tm.inject(source, target)
-
-
 class NavierStokesSolverDG(PdeConstraint):
     """Incompressible Navier-Stokes as PDE constraint."""
 
@@ -154,7 +119,6 @@ class NavierStokesSolverDG(PdeConstraint):
                     'pc_type': 'fieldsplit',
                     'pc_fieldsplit_type': 'schur',
                     'pc_fieldsplit_schur_factorization_type': 'full',
-                    #'mg_transfer_manager': __name__ + ".MyTransferManager",
 
                     'fieldsplit_0': {'ksp_convergence_test': 'skip',
                                     'ksp_max_it': 1,
