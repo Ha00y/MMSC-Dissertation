@@ -15,11 +15,12 @@ from CR_Hdot_inner_product import CRHdotInnerProduct
 from objective_aerofoil import AerofoilObjective
 from cauchy_riemann import CauchyRiemannConstraint
 from mg_control_space import MultiGridControlSpace
+from naca_gen import NACAgen
 
 # setup problem
-with fd.CheckpointFile('mesh_gen/naca0012_mesh.h5', 'r') as afile:
-    mesh = afile.load_mesh('naca0012')
-mesh_m = mesh
+#with fd.CheckpointFile('mesh_gen/naca0012_mesh.h5', 'r') as afile:
+#    mesh = afile.load_mesh('naca0012')
+mesh_m = NACAgen('0012')
 #mh = fd.MeshHierarchy(mesh, 2)
 #mesh_m = mh[-1]
 
@@ -51,11 +52,11 @@ def cb():
 
     (mh, level) = get_level(e.solution.subfunctions[0].function_space().mesh())
 
-    ngmesh = mh[0].netgen_mesh
-    ngmesh.Save("naca.vol")
+    #ngmesh = mh[0].netgen_mesh
+    #ngmesh.Save("naca.vol")
     #input("Next?")
-    ngmesh2 = ngm.Mesh(dim=2)
-    ngmesh2.Load('naca.vol')
+    #ngmesh2 = ngm.Mesh(dim=2)
+    #ngmesh2.Load('naca.vol')
 
 #        with fd.CheckpointFile(f'mesh_gen/mesh_{i}.h5', 'w') as afile:
 #            mesh.name = 'naca0012'

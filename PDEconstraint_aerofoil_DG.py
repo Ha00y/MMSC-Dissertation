@@ -153,7 +153,7 @@ class NavierStokesSolverDG(PdeConstraint):
         u_old = self.solution.copy(deepcopy=True)
         try:
             solve(self.F == 0, self.solution, bcs=self.bcs,
-                     solver_parameters=self.sp_mg)
+                     solver_parameters=self.sp_lu)
         except ConvergenceError:
             self.failed_to_solve = True
             self.solution.assign(u_old)
