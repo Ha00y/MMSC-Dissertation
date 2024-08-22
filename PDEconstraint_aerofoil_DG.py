@@ -8,7 +8,7 @@ class NavierStokesSolverDG(PdeConstraint):
     def __init__(self, mesh, Re, Fr, gamma):
         super().__init__()
         self.failed_to_solve = False  # when self.solver.solve() fail
-        self.mesh_m = mesh
+        self.mesh = mesh
         self.gamma = Constant(gamma)
         self.sigma = Constant(10*(2+1)**2)
         self.Re = Constant(Re)
@@ -19,17 +19,17 @@ class NavierStokesSolverDG(PdeConstraint):
 
         # Setup problem
         k = 2
-        self.V = FunctionSpace(self.mesh_m, "BDM", k)  # Individual
-        self.Q = FunctionSpace(self.mesh_m, "DG", k-1, variant="integral")
+        self.V = FunctionSpace(self.mesh, "BDM", k)  # Individual
+        self.Q = FunctionSpace(self.mesh, "DG", k-1, variant="integral")
         self.W = MixedFunctionSpace([self.V, self.Q])  # Mixed
 
         # Preallocate solution variables for state equation
         self.solution = Function(self.W, name="State")
         self.testfunction = TestFunction(self.W)
 
-        n = FacetNormal(self.mesh_m)
-        h = CellDiameter(self.mesh_m)
-        (x, y) = SpatialCoordinate(self.mesh_m)
+        n = FacetNormal(self.mesh)
+        h = CellDiameter(self.mesh)
+        (x, y) = SpatialCoordinate(self.mesh)
         p0 = 10/13 - x/13 #1atleft,0atright
 
         # Weak form of incompressible Navier-Stokes equations
@@ -67,7 +67,8 @@ class NavierStokesSolverDG(PdeConstraint):
         
         L_lagrangian = 0.5 * self.gamma * inner(div(u), div(u)) * dx
         F_lagrangian = derivative(L_lagrangian, z)
-
+        #lagrangian = 0.5 * self.gamma * inner(project(div(u),self.Q), div(v)) * dx
+    
         self.F = (
                    (1/self.Re) * a(u,v)
                  + c(u,v)
@@ -75,6 +76,7 @@ class NavierStokesSolverDG(PdeConstraint):
                  + b(u,q)
                  + p0 * inner(n,v) * ds
                  + F_lagrangian
+                # + lagrangian
                  )
         
         if np.isnan(Fr) == False:
@@ -151,7 +153,7 @@ class NavierStokesSolverDG(PdeConstraint):
         u_old = self.solution.copy(deepcopy=True)
         try:
             solve(self.F == 0, self.solution, bcs=self.bcs,
-                     solver_parameters=self.sp_lu)
+                     solver_parameters=self.sp_mg)
         except ConvergenceError:
             self.failed_to_solve = True
             self.solution.assign(u_old)
@@ -164,14 +166,19 @@ if __name__ == "__main__":
     gamma = 10000
 
     # Load the mesh
-    with CheckpointFile('mesh_gen/naca0012_mesh_mg_1.h5', 'r') as afile:
-    #with CheckpointFile('mesh_gen/naca0012_mesh_shapeopt.h5', 'r') as afile:
+    with CheckpointFile('mesh_gen/mesh_0.h5', 'r') as afile:
     #with CheckpointFile('mesh_gen/naca0012_mesh.h5', 'r') as afile:
-        mesh_m = afile.load_mesh('naca0012_mg')
-    #mh = MeshHierarchy(mesh_m, 2)
-    #mesh_m = mh[-1]
+        mesh_import = afile.load_mesh('naca0012')
+    #with CheckpointFile(f'mesh_gen/meshT_0.h5', 'w') as afile:
+    #    mesh_m = afile.load_mesh('mesh')
+    
+    VTKFile(f"mesh_gen/mesh_initial.pvd").write(mesh_import.coordinates)
+    mh = MeshHierarchy(mesh_import, 2)
+    mesh_new = mh[-1]
+    for i in range(3):
+        VTKFile(f"mesh_gen/mesh_after_{i}.pvd").write(mh[i].coordinates)
 
-    e = NavierStokesSolverDG(mesh_m, Re, Fr, gamma)
+    e = NavierStokesSolverDG(mesh_new, Re, Fr, gamma)
     e.solve()
     out = VTKFile("temp_sol/temp_u.pvd")
     out.write(e.solution.subfunctions[0])

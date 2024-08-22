@@ -6,6 +6,12 @@ mesh_gen/__pycache__
 tmp/
 mesh_gen/naca0012_mesh
 mesh_gen/naca2412_mesh
+mesh_gen/
+output_2multigrid_full/
+output_2multigrid_lu/
+output_standard/
+L2tracking/
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

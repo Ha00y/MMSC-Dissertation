@@ -6,6 +6,8 @@ import ROL
 import numpy as np
 from ROL.numpy_vector import NumpyVector
 
+import netgen.meshing as ngm
+
 from PDEconstraint_aerofoil_CG import NavierStokesSolverCG
 from PDEconstraint_aerofoil_DG import NavierStokesSolverDG
 
@@ -22,7 +24,7 @@ mesh_m = mesh
 #mesh_m = mh[-1]
 
 #Q = fs.FeControlSpace(mesh_m)
-Q = MultiGridControlSpace(mesh_m, degree=1, refinements=2)
+Q = MultiGridControlSpace(mesh_m, degree=1, refinements=1)
 #Q = fs.FeMultiGridControlSpace(mesh, refinements=2)
 
 #inner = fs.LaplaceInnerProduct(Q, fixed_bids=[1, 2, 3, 4])
@@ -34,27 +36,31 @@ q = fs.ControlVector(Q, inner)
 #L = 0.3; u = 10
 #Re = fd.Constant(u*L/nu)	
 #Fr = fd.Constant(u/(9.81*L)**0.5)
-Re = 1 # CHANGE these in DGMassInv too
+Re = 1
 Fr = np.nan # Specify np.nan for no forcing term
-gamma = 10000 # CHANGE these in DGMassInv too
+gamma = 10000 
 
 e = NavierStokesSolverDG(Q.mesh_m, Re, Fr, gamma)
 #e = NavierStokesSolverCG(Q.mesh_m, Re, Fr, gamma)
 e.solution.subfunctions[0].rename("Velocity")
 e.solution.subfunctions[1].rename("Pressure")
 
-# save state variable evolution in file u2.pvd or u3.pvd
-if mesh_m.topological_dimension() == 2:  # in 2D
-    out = fd.VTKFile("output/solution.pvd")
-elif mesh_m.topological_dimension() == 3:  # in 3D
-    out = fd.VTKFile("output/solution3D.pvd")
+out = fd.VTKFile("output/solution.pvd")
 
 def cb():
 
     (mh, level) = get_level(e.solution.subfunctions[0].function_space().mesh())
-    mh[0].name = 'naca0012_shapeopt'
-    with fd.CheckpointFile('mesh_gen/naca0012_mesh_shapeopt.h5', 'w') as afile:
-        afile.save_mesh(mh[0])
+
+    ngmesh = mh[0].netgen_mesh
+    ngmesh.Save("naca.vol")
+    #input("Next?")
+    ngmesh2 = ngm.Mesh(dim=2)
+    ngmesh2.Load('naca.vol')
+
+#        with fd.CheckpointFile(f'mesh_gen/mesh_{i}.h5', 'w') as afile:
+#            mesh.name = 'naca0012'
+#          afile.save_mesh(mesh)
+#        fd.VTKFile(f"mesh_gen/mesh_{i}.pvd").write(mesh.coordinates)
 
     return out.write(e.solution.subfunctions[0])
 
@@ -64,9 +70,9 @@ J = fs.ReducedObjective(J_, e)
 
 # add regularization to improve mesh quality
 J_q = fsz.MoYoSpectralConstraint(10, fd.Constant(0.5), Q)
-J_cr = CauchyRiemannConstraint(e, Q, cb=cb)
+#J_cr = CauchyRiemannConstraint(e, Q, cb=cb)
 
-J = J + J_q + J_cr
+J = J + J_q #+ J_cr
 
 # Set up constraints
 vol = fsz.VolumeFunctional(Q)

@@ -15,7 +15,7 @@ class AerofoilObjective(ShapeObjective):
         #Re = self.pde_solver.Re
 
         if self.pde_solver.failed_to_solve:  # return NaNs if state solve fails
-            return np.nan * fd.dx(self.pde_solver.mesh_m)
+            return np.nan * fd.dx(self.pde_solver.mesh)
         else:
             u, _ = fd.split(self.pde_solver.solution)
             return fd.inner(fd.grad(u), fd.grad(u)) * fd.dx
