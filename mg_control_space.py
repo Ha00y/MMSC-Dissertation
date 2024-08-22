@@ -1,5 +1,6 @@
 import firedrake as fd
 import fireshape as fs
+from firedrake.dmhooks import get_transfer_manager
 
 class MultiGridControlSpace(fs.ControlSpace):
     def __init__(self, mesh, refinements=1, degree=1):
@@ -75,6 +76,13 @@ class MultiGridControlSpace(fs.ControlSpace):
         # this is the only reason we need to overwrite update_domain
         #[T += id_ for (T, id_) in zip(self.Ts, self.ids)]
         [T.assign(T + id_) for (T, id_) in zip(self.Ts, self.ids)]
+
+        for (i, T) in enumerate(self.Ts):
+            fd.VTKFile(f"tmp/Ts-{i}.pvd").write(T)
+
+        for mesh in self.mh_mapped:
+            if "hierarchy_physical_node_locations" in mesh._geometric_shared_data_cache:
+                mesh._geometric_shared_data_cache.pop("hierarchy_physical_node_locations")
         return True
 
     # kept this as a comment for your debugging utils
