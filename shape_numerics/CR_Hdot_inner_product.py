@@ -7,6 +7,7 @@ class CRHdotInnerProduct(UflInnerProduct):
     def get_weak_form(self, V):
 
         self.alpha = fd.Constant(1e-2)
+        self.CR = True # Choose H^1 or CR inner product
         self.sym = True # Choose H^1 or H(sym) inner product
         self.clamp = False # Choose use of mu
 
@@ -16,22 +17,25 @@ class CRHdotInnerProduct(UflInnerProduct):
         Bu = self.cauchy_riemann(u); Bv = self.cauchy_riemann(v)
         Du = self.derivative(u); Dv = self.derivative(v)
 
-        d = self.compute_distance_function(V.mesh())
-        epsilon = fd.Constant(0.01)
-        mu = fd.sqrt(epsilon / (d + epsilon))
+        if self.clamp:
+            d = self.compute_distance_function(V.mesh())
+            epsilon = fd.Constant(0.01)
+            mu = fd.sqrt(epsilon / (d + epsilon))
 
-
-        if self.sym:
-            Eu = 0.5 * (Du + Du.T); Ev = 0.5 * (Dv + Dv.T)
-            if self.clamp:
-                return (1/self.alpha) * fd.inner(mu*Bu, mu*Bv) * fd.dx + fd.inner(Eu, Ev) * fd.dx
+        if self.CR:
+            if self.sym:
+                Eu = 0.5 * (Du + Du.T); Ev = 0.5 * (Dv + Dv.T)
+                if self.clamp:
+                    return (1/self.alpha) * fd.inner(mu*Bu, mu*Bv) * fd.dx + fd.inner(Eu, Ev) * fd.dx
+                else:
+                    return (1/self.alpha) * fd.inner(Bu, Bv) * fd.dx + fd.inner(Eu, Ev) * fd.dx
             else:
-                return (1/self.alpha) * fd.inner(Bu, Bv) * fd.dx + fd.inner(Eu, Ev) * fd.dx
+                if self.clamp:
+                    return (1/self.alpha) * fd.inner(mu*Bu, mu*Bv) * fd.dx + fd.inner(Du, Dv) * fd.dx
+                else:
+                    return (1/self.alpha) * fd.inner(Bu, Bv) * fd.dx + fd.inner(Du, Dv) * fd.dx
         else:
-            if self.clamp:
-                return (1/self.alpha) * fd.inner(mu*Bu, mu*Bv) * fd.dx + fd.inner(Du, Dv) * fd.dx
-            else:
-                return (1/self.alpha) * fd.inner(Bu, Bv) * fd.dx + fd.inner(Du, Dv) * fd.dx
+            return fd.inner(Du, Dv) * fd.dx
 
 
     def cauchy_riemann(self, u):
