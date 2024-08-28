@@ -2,6 +2,8 @@ from firedrake import *
 from fireshape import PdeConstraint
 import numpy as np
 
+from naca_gen import NACAgen
+
 class NavierStokesSolverDG(PdeConstraint):
     """Incompressible Navier-Stokes as PDE constraint."""
 
@@ -15,7 +17,8 @@ class NavierStokesSolverDG(PdeConstraint):
         self.Fr = Constant(Fr)
         
         f = Constant((0,-1))
-        g_D = Constant((0,0))
+        g_out = Constant((1,0))
+        g_wing = Constant((0,0))
 
         # Setup problem
         k = 2
@@ -29,8 +32,8 @@ class NavierStokesSolverDG(PdeConstraint):
 
         n = FacetNormal(self.mesh)
         h = CellDiameter(self.mesh)
-        (x, y) = SpatialCoordinate(self.mesh)
-        p0 = 10/13 - x/13 #1atleft,0atright
+        #(x, y) = SpatialCoordinate(self.mesh)
+        #p0 = 10/13 - x/13 #1atleft,0atright
 
         # Weak form of incompressible Navier-Stokes equations
         z = self.solution
@@ -67,26 +70,33 @@ class NavierStokesSolverDG(PdeConstraint):
         
         L_lagrangian = 0.5 * self.gamma * inner(div(u), div(u)) * dx
         F_lagrangian = derivative(L_lagrangian, z)
-        #lagrangian = 0.5 * self.gamma * inner(project(div(u),self.Q), div(v)) * dx
     
         self.F = (
                    (1/self.Re) * a(u,v)
                  + c(u,v)
                  + b(v,p)
                  + b(u,q)
-                 + p0 * inner(n,v) * ds
+                 #+ p0 * inner(n,v) * ds
                  + F_lagrangian
-                # + lagrangian
                  )
         
         if np.isnan(Fr) == False:
             self.F -= (1/self.Fr)**2 * inner(f,v) * dx
         
         # Dirichlet Boundary conditions
-        dirichlet_bids = (1, 4, 5)
-        self.bcs = DirichletBC(self.W.sub(0), g_D, dirichlet_bids)
-        for bid in dirichlet_bids:
-            self.F += (1/self.Re) * a_bc(u, v, bid, g_D) + c_bc(u, v, bid, g_D)
+        #dirichlet_bids = (1, 4, 5)
+        #self.bcs = DirichletBC(self.W.sub(0), g_D, dirichlet_bids)
+        #for bid in dirichlet_bids:
+        #    self.F += (1/self.Re) * a_bc(u, v, bid, g_D) + c_bc(u, v, bid, g_D)
+
+        # Boundary conditions
+        zero_bids = range(1,5)
+        self.bcs = [DirichletBC(self.W.sub(0), g_out, zero_bids), DirichletBC(self.W.sub(0), g_wing, 5)]
+
+        g = [g_out, g_out, g_out, g_out, g_wing]
+        for bid in range(1, 6):
+            self.F += (1/self.Re) * a_bc(u, v, bid, g[bid-1]) + c_bc(u, v, bid, g[bid-1])
+
 
         # PDE-solver parameters
         self.nsp = None
@@ -161,24 +171,15 @@ class NavierStokesSolverDG(PdeConstraint):
 
 if __name__ == "__main__":
 
-    Re = 1
+    Re = 100
     Fr = np.nan # Specify np.nan for no forcing term
     gamma = 10000
 
-    # Load the mesh
-    with CheckpointFile('mesh_gen/mesh_0.h5', 'r') as afile:
-    #with CheckpointFile('mesh_gen/naca0012_mesh.h5', 'r') as afile:
-        mesh_import = afile.load_mesh('naca0012')
-    #with CheckpointFile(f'mesh_gen/meshT_0.h5', 'w') as afile:
-    #    mesh_m = afile.load_mesh('mesh')
-    
-    VTKFile(f"mesh_gen/mesh_initial.pvd").write(mesh_import.coordinates)
-    mh = MeshHierarchy(mesh_import, 2)
-    mesh_new = mh[-1]
-    for i in range(3):
-        VTKFile(f"mesh_gen/mesh_after_{i}.pvd").write(mh[i].coordinates)
+    mesh = NACAgen('0012')
+    mh = MeshHierarchy(mesh, 1)
+    mesh_m = mh[-1]
 
-    e = NavierStokesSolverDG(mesh_new, Re, Fr, gamma)
+    e = NavierStokesSolverDG(mesh_m, Re, Fr, gamma)
     e.solve()
     out = VTKFile("temp_sol/temp_u.pvd")
     out.write(e.solution.subfunctions[0])

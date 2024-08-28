@@ -3,7 +3,7 @@ from fireshape import ShapeObjective
 import numpy as np
 
 
-class AerofoilObjective(ShapeObjective):
+class DragObjective(ShapeObjective):
     """L2 tracking functional for Poisson problem."""
 
     def __init__(self, pde_solver, *args, **kwargs):
@@ -18,4 +18,4 @@ class AerofoilObjective(ShapeObjective):
             return np.nan * fd.dx(self.pde_solver.mesh)
         else:
             u, _ = fd.split(self.pde_solver.solution)
-            return fd.inner(fd.grad(u), fd.grad(u)) * fd.dx 
+            return fd.inner(fd.sym(fd.grad(u)), fd.sym(fd.grad(u))) * fd.dx 

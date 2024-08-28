@@ -4,6 +4,11 @@ outputH^1CR/
 outputH^1CRmu/
 outputH(sym)CR/
 temp_sol/
+outputNACA0012drag/
+outputNACA0012lift/
+outputNACA2412drag/
+outputNACA2412lift/
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

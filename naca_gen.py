@@ -17,7 +17,9 @@ def NACAgen(profile):
 
     spline = SplineApproximation(pnts)
     aerofoil = Face(Wire(spline)).Move((0.3,1,0))
-    rect = WorkPlane(Axes((-1, 0, 0), n=Z, h=X)).Rectangle(4, 2).Face()
+    rect = WorkPlane(Axes((-2, -2, 0), n=Z, h=X)).Rectangle(12, 6).Face()   
+    #rect = WorkPlane(Axes((-1, -1, 0), n=Z, h=X)).Rectangle(7, 4).Face()
+    #rect = WorkPlane(Axes((-1, 0, 0), n=Z, h=X)).Rectangle(4, 2).Face()
     domain = rect - aerofoil
 
     domain.edges.name="wing"
@@ -27,7 +29,7 @@ def NACAgen(profile):
     domain.edges.Max(X).name="outlet"
     geo = OCCGeometry(domain, dim=2)
 
-    ngmesh = geo.GenerateMesh(maxh=0.5)
+    ngmesh = geo.GenerateMesh(maxh=0.3)
     mesh = fd.Mesh(ngmesh)
     mesh.name = f'naca{int(profile)}'
     #mh = fd.MeshHierarchy(mesh, 2)
@@ -106,25 +108,15 @@ def linspace(start,stop,np):
 if __name__ == "__main__":
 
     # Generate the mesh
-    #mesh = NACAgen('0012')
-    mesh = NACAgen('2412')
+    mesh1 = NACAgen('0012')
+    mesh2 = NACAgen('2412')
 
-    # Save the mesh
-    with fd.CheckpointFile('mesh_gen/naca2412_mesh.h5', 'w') as afile:
-        afile.save_mesh(mesh)
+    V1 = fd.VectorFunctionSpace(mesh1, "CG", 1)
+    V2 = fd.VectorFunctionSpace(mesh2, "CG", 1)
 
-    # Load the mesh
-    #with fd.CheckpointFile('naca0012_mesh.h5', 'r') as afile:
-    #    loaded_mesh = afile.load_mesh('naca0012')
+    V_fun1 = fd.Function(V1)
+    V_fun2 = fd.Function(V2)
 
-    # Compare coordinates
-    #for i in range(len(mesh.coordinates.dat.data)):
-    #    if (mesh.coordinates.dat.data[:][i,0] == loaded_mesh.coordinates.dat.data[:][i,0]) == False:
-    #        print('fail')
-    #    if (mesh.coordinates.dat.data[:][i,1] == loaded_mesh.coordinates.dat.data[:][i,1]) == False:
-    #        print('fail')
+    fd.VTKFile("output/naca0012.pvd").write(V_fun1)
+    fd.VTKFile("output/naca2412.pvd").write(V_fun2)
 
-    #for marker in mesh.exterior_facets.unique_markers:
-    #    print(f"Marker: {marker}")
-    #for marker in loaded_mesh.exterior_facets.unique_markers:
-    #    print(f"Marker: {marker}")

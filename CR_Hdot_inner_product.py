@@ -6,7 +6,7 @@ class CRHdotInnerProduct(UflInnerProduct):
 
     def get_weak_form(self, V):
 
-        self.alpha = fd.Constant(1e-2)
+        self.alpha = fd.Constant(1e-7)
         self.sym = True # Choose H^1 or H(sym) inner product
         self.clamp = False # Choose use of mu
 

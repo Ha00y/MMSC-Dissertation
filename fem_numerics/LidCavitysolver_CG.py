@@ -1,31 +1,28 @@
-from firedrake import *
+import firedrake as fd
 from fireshape import PdeConstraint
 import numpy as np
 
-class NavierStokesSolverDG(PdeConstraint):
+class NavierStokesSolverCG(PdeConstraint):
     """Incompressible Navier-Stokes as PDE constraint."""
 
     def __init__(self, mesh, Re):
         super().__init__()
         self.failed_to_solve = False  # when self.solver.solve() fail
-        self.mesh = mesh
-        self.gamma = Constant(10000)
-        self.sigma = Constant(10*(2+1)**2)
-        self.Re = Constant(Re)
+        self.mesh_m = mesh
+        self.gamma = fd.Constant(10000)
+        self.Re = fd.Constant(Re)
 
-        # Setup problem
+        # Setup problem, Taylor-Hood finite elements
         k = 2
-        self.V = FunctionSpace(self.mesh, "BDM", k)  # Individual
-        self.Q = FunctionSpace(self.mesh, "DG", k-1, variant="integral")
-        self.W = MixedFunctionSpace([self.V, self.Q])  # Mixed
+        self.V = fd.VectorFunctionSpace(self.mesh_m, "CG", k) \
+            * fd.FunctionSpace(self.mesh_m, "CG", k-1, variant="integral")
 
         # Preallocate solution variables for state equation
-        self.solution = Function(self.W, name="State")
-        self.testfunction = TestFunction(self.W)
+        self.solution = fd.Function(self.V, name="State")
+        self.testfunction = fd.TestFunction(self.V)
 
-        n = FacetNormal(self.mesh)
-        h = CellDiameter(self.mesh)
-        (x, y) = SpatialCoordinate(self.mesh)
+        n = fd.FacetNormal(self.mesh_m)
+        (x, y) = fd.SpatialCoordinate(self.mesh_m)
 
         f = x**4 - 2*x**3 + x**2
         g = y**4 - y**2
@@ -40,62 +37,32 @@ class NavierStokesSolverDG(PdeConstraint):
         u_lid = 16*(x**4 -2*x**3 + x**2) 
         #u_lid = (x**2)*(2 - x)**2
 
-        g_lid = as_vector((u_lid, 0))
-        g_D = Constant((0,0))
-
+        g_lid = fd.as_vector((u_lid, 0))
+        g_D = fd.Constant((0,0))
+    
         # Weak form of incompressible Navier-Stokes equations
         z = self.solution
-        u, p = split(z)
+        u, p = fd.split(z)
         test = self.testfunction
-        v, q = split(test)
+        v, q = fd.split(test)
 
-        # Define Lagrangian
-        def a(u, v):
-            return inner(2*sym(grad(u)), grad(v))*dx \
-                 - inner(avg(2*sym(grad(u))), 2*avg(outer(v, n))) * dS \
-                 - inner(avg(2*sym(grad(v))), 2*avg(outer(u, n))) * dS \
-                 + self.sigma/avg(h) * inner(2*avg(outer(u,n)),2*avg(outer(v,n))) * dS
+        L_lagrangian = 0.5 * self.gamma * fd.inner(fd.div(u), fd.div(u)) * fd.dx
+        F_lagrangian = fd.derivative(L_lagrangian, z)
 
-        def a_bc(u, v, bid, g):
-            return -inner(outer(v,n),2*sym(grad(u)))*ds(bid) \
-                   -inner(outer(u-g,n),2*sym(grad(v)))*ds(bid) \
-                   +(self.sigma/h)*inner(v,u-g)*ds(bid)
-
-        def c(u, v):
-            uflux_int = 0.5*(dot(u, n) + abs(dot(u, n)))*u
-            return - dot(u ,div(outer(v,u)))*dx \
-                   + dot(v('+')-v('-'), uflux_int('+')-uflux_int('-'))*dS
-
-        def c_bc(u, v, bid, g):
-            if g is None:
-                uflux_ext = 0.5*(inner(u,n)+abs(inner(u,n)))*u
-            else:
-                uflux_ext = 0.5*(inner(u,n)+abs(inner(u,n)))*u + 0.5*(inner(u,n)-abs(inner(u,n)))*g
-            return dot(v,uflux_ext)*ds(bid)
-
-        def b(u, q):
-            return div(u) * q * dx
-        
-        L_lagrangian = 0.5 * self.gamma * inner(div(u), div(u)) * dx
-        F_lagrangian = derivative(L_lagrangian, z)
-    
         self.F = (
-                   (1/self.Re) * a(u,v)
-                 + c(u,v)
-                 + b(v,p)
-                 + b(u,q)
-                 + F_lagrangian
-                 - inner(as_vector((0,-B)),v) * dx
-                 )
-        
+            fd.inner(2/self.Re*fd.sym(fd.grad(u)), fd.grad(v)) * fd.dx
+            - fd.div(u)*q * fd.dx
+            - fd.div(v)*p * fd.dx
+            + fd.inner(u, fd.grad(u)*v)* fd.dx
+            #- fd.inner(fd.outer(u, u), fd.sym(fd.grad(v))) * fd.dx
+            #+ fd.inner(fd.dot(fd.outer(u, u), n), v) * fd.ds
+            + F_lagrangian
+            - fd.inner(fd.as_vector((0,-B)),v) * fd.dx
+            )
+
         # Boundary conditions
         zero_bids = (1, 2, 3)
-        self.bcs = [DirichletBC(self.W.sub(0), g_D, zero_bids), DirichletBC(self.W.sub(0), g_lid, 4)]
-
-        g = [g_D, g_D, g_D, g_lid]
-        for bid in range(1, 5):
-            self.F += (1/self.Re) * a_bc(u, v, bid, g[bid-1]) + c_bc(u, v, bid, g[bid-1])
-    
+        self.bcs = [fd.DirichletBC(self.V.sub(0), g_D, zero_bids), fd.DirichletBC(self.V.sub(0), g_lid, 4)]
 
         # PDE-solver parameters
         self.nsp = None
@@ -103,14 +70,14 @@ class NavierStokesSolverDG(PdeConstraint):
                     'snes_monitor': None,
                     'snes_converged_reason': None,
                     'snes_max_it': 20,
-                    'snes_atol': 1e-8,
+                    'snes_atol': 1e-6,
                     'snes_rtol': 1e-12,
-                    'snes_stol': 1e-06,
+                    'snes_stol': 1e-5,
                     'ksp_type': 'preonly',
                     'pc_type': 'lu',
-                    'pc_factor_mat_solver_type': 'mumps'
+                   'pc_factor_mat_solver_type': 'mumps'
                     }
-
+        
         self.sp_mg = {
                     'mat_type': 'nest',
                     'snes_monitor': None,
@@ -121,7 +88,7 @@ class NavierStokesSolverDG(PdeConstraint):
                     'snes_stol': 1e-06,
                     'ksp_type': 'fgmres',
                     'ksp_converged_reason': None,
-                    'ksp_monitor_true_residual': None,  
+                    'ksp_monitor_true_residual': None, 
                     'ksp_max_it': 500,
                     'ksp_atol': 1e-08,
                     'ksp_rtol': 1e-10,
@@ -136,11 +103,11 @@ class NavierStokesSolverDG(PdeConstraint):
                                     'ksp_type': 'richardson',
                                     'pc_type': 'mg',
                                         'pc_mg_type': 'full',
-                                        'mg_coarse_pc_type': 'lu',
-                                        'mg_coarse_ksp_type': 'richardson',
-                                        'mg_coarse_pc_factor_mat_solver_type': 'mumps',
+                                        'mg_coarse_assembled_pc_type': 'lu',
+                                        'mg_coarse_assembled_pc_factor_mat_solver_type': 'mumps',
+                                        'mg_coarse_pc_python_type': 'firedrake.AssembledPC',
+                                        'mg_coarse_pc_type': 'python',
                                         'mg_levels': {'ksp_convergence_test': 'skip',
-                                                    #'ksp_monitor_true_residual': None,
                                                     'ksp_max_it': 5,
                                                     'ksp_type': 'fgmres',
                                                     'pc_python_type': 'firedrake.ASMStarPC',
@@ -150,37 +117,36 @@ class NavierStokesSolverDG(PdeConstraint):
                     'fieldsplit_1': {'ksp_type': 'richardson',
                                      'ksp_max_it': 1,
                                      'ksp_convergence_test': 'skip',
-                                     'ksp_richardson_scale': -(2/float(Re) + float(self.gamma)),
+                                     'ksp_richardson_scale': -(2/float(self.Re) + float(self.gamma)),
                                      'pc_type': 'python',
                                      'pc_python_type': 'firedrake.MassInvPC',
                                      'Mp_pc_type': 'jacobi'},
                     }
-    
+
 
     def solve(self):
         super().solve()
         self.failed_to_solve = False
         u_old = self.solution.copy(deepcopy=True)
         try:
-            solve(self.F == 0, self.solution, bcs=self.bcs,
+            fd.solve(self.F == 0, self.solution, bcs=self.bcs,
                      solver_parameters=self.sp_mg)
-        except ConvergenceError:
+        except fd.ConvergenceError:
             self.failed_to_solve = True
             self.solution.assign(u_old)
 
 
 if __name__ == "__main__":
 
-    Re = 100
-    N = 32
+    Re = 1
+    Fr = np.nan # Specify np.nan for no forcing term
+    gamma = 10000
+   
+    # Load the mesh
+    with fd.CheckpointFile('mesh_gen/naca0012_mesh.h5', 'r') as afile:
+        mesh = afile.load_mesh('naca0012')
 
-    mesh = UnitSquareMesh(N, N)
-
-    mh = MeshHierarchy(mesh, 1)
-    mesh_m = mh[-1]
-    
-    e = NavierStokesSolverDG(mesh_m, Re)
+    e = NavierStokesSolverCG(mesh, Re, Fr, gamma)
     e.solve()
-    e.solution.subfunctions[0].rename("Velocity")
-    out = VTKFile("temp_sol/temp_u.pvd")
+    out = fd.VTKFile("temp_sol/temp_u.pvd")
     out.write(e.solution.subfunctions[0])
